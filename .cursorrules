@@ -1,0 +1,345 @@
+# Cursor Rules for Vyuu Copilot v2 - LangGraph Intent Orchestration System
+
+## Python Coding Standards
+
+### Code Formatting
+- Use Black for code formatting with line length of 88 characters
+- Use isort for import sorting with Black-compatible profile
+- Follow PEP 8 style guidelines strictly
+- Use double quotes for strings unless single quotes avoid escaping
+- Add trailing commas in multi-line structures
+
+### Type Hints and Annotations
+- Always use type hints for function parameters and return types
+- Use `from typing import` for type annotations
+- Use `Optional[T]` instead of `Union[T, None]`
+- Use `list[T]` and `dict[K, V]` for Python 3.9+ instead of `List[T]` and `Dict[K, V]`
+- Use `Literal` for string enums and constants
+- Use `TypedDict` for structured dictionaries
+
+### Docstrings
+- Use Google-style docstrings for all functions, classes, and modules
+- Include Args, Returns, and Raises sections where applicable
+- Provide clear, concise descriptions with examples for complex functions
+
+### Import Organization
+- Group imports in this order: standard library, third-party, local imports
+- Use absolute imports whenever possible
+- Avoid circular imports by restructuring code if necessary
+- Use `from module import specific_item` for commonly used items
+- Use `import module` for less frequently used items
+
+## File Naming Conventions
+
+### Python Files
+- Use snake_case for all Python files: `user_intent_classifier.py`
+- Use snake_case for directories: `intent_handlers/`
+- Use SCREAMING_SNAKE_CASE for constants: `MAX_RETRY_COUNT`
+
+### Configuration Files
+- Use kebab-case for config files: `database-config.yaml`
+- Use kebab-case for Docker files: `docker-compose.yml`
+- Use snake_case for Python config modules: `app_config.py`
+
+### LangGraph Components
+- Nodes: `{purpose}_node.py` (e.g., `intent_classification_node.py`)
+- Subgraphs: `{purpose}_subgraph.py` (e.g., `user_onboarding_subgraph.py`)
+- Tools: `{service}_tool.py` (e.g., `supabase_tool.py`)
+- Schemas: `{entity}_schema.py` (e.g., `user_schema.py`)
+
+## Dependency Management
+
+### Import Standards
+- Import LangGraph components consistently:
+  ```python
+  from langgraph.graph import StateGraph, START, END
+  from langgraph.prebuilt import ToolExecutor
+  from langgraph.checkpoint.memory import MemorySaver
+  ```
+- Import Pydantic models:
+  ```python
+  from pydantic import BaseModel, Field, validator
+  ```
+- Import FastAPI components:
+  ```python
+  from fastapi import FastAPI, HTTPException, Depends, status
+  ```
+
+### Version Management
+- Always specify minimum versions in pyproject.toml
+- Use compatible release specifiers: `>=1.0.0,<2.0.0`
+- Document breaking changes and migration paths
+
+## Error Handling Patterns
+
+### Exception Handling
+- Use specific exception types instead of broad `except Exception`
+- Create custom exceptions for domain-specific errors
+- Always log exceptions with appropriate context
+- Use structured logging with JSON format in production
+
+### Error Propagation
+- Let exceptions bubble up unless you can meaningfully handle them
+- Use `HTTPException` for API errors with proper status codes
+- Include error codes and user-friendly messages
+- Implement retry logic with exponential backoff for transient failures
+
+### Example Error Handling:
+```python
+from typing import Optional
+import logging
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+class IntentClassificationError(Exception):
+    """Raised when intent classification fails."""
+    pass
+
+async def classify_intent(user_input: str) -> Optional[str]:
+    try:
+        result = await intent_classifier.classify(user_input)
+        return result.intent
+    except TimeoutError:
+        logger.warning(f"Intent classification timeout for input: {user_input[:50]}...")
+        raise IntentClassificationError("Classification service timeout")
+    except Exception as e:
+        logger.error(f"Unexpected error in intent classification: {e}")
+        raise IntentClassificationError(f"Classification failed: {str(e)}")
+```
+
+## Logging Standards
+
+### Structured Logging
+- Use structured logging with consistent fields
+- Include correlation IDs for request tracing
+- Log at appropriate levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- Include context like user_id, session_id, intent_type
+
+### Log Format
+```python
+import logging
+import json
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
+# Structured logging example
+logger.info(
+    "Intent classified",
+    extra={
+        "user_id": user_id,
+        "session_id": session_id,
+        "intent": intent_result,
+        "confidence": confidence_score,
+        "processing_time_ms": processing_time
+    }
+)
+```
+
+## LangGraph-Specific Patterns
+
+### State Management
+- Define clear state schemas using Pydantic models
+- Use TypedDict for state when simple structures suffice
+- Always validate state transitions
+- Include metadata for debugging and monitoring
+
+### State Schema Example:
+```python
+from typing import TypedDict, List, Optional, Any
+from pydantic import BaseModel, Field
+
+class ConversationState(TypedDict):
+    user_id: str
+    session_id: str
+    messages: List[dict]
+    current_intent: Optional[str]
+    intent_confidence: Optional[float]
+    context: dict[str, Any]
+    step_count: int
+    errors: List[str]
+```
+
+### Node Implementation Patterns
+- Each node should be a pure function that takes state and returns new state
+- Include comprehensive error handling in nodes
+- Log node entry/exit with state information
+- Use descriptive node names that indicate their purpose
+
+### Node Example:
+```python
+from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def intent_classification_node(state: ConversationState) -> ConversationState:
+    """
+    Classify user intent from the last message.
+    
+    Args:
+        state: Current conversation state
+        
+    Returns:
+        Updated state with intent classification
+        
+    Raises:
+        IntentClassificationError: When classification fails
+    """
+    logger.info(f"Processing intent classification for session {state['session_id']}")
+    
+    try:
+        last_message = state["messages"][-1]["content"]
+        intent_result = await classify_intent(last_message)
+        
+        return {
+            **state,
+            "current_intent": intent_result.intent,
+            "intent_confidence": intent_result.confidence,
+            "step_count": state["step_count"] + 1
+        }
+    except Exception as e:
+        logger.error(f"Intent classification failed: {e}")
+        return {
+            **state,
+            "errors": state["errors"] + [f"Intent classification failed: {str(e)}"],
+            "step_count": state["step_count"] + 1
+        }
+```
+
+### Graph Construction
+- Use descriptive edge conditions
+- Implement proper fallback paths
+- Include monitoring and debugging nodes
+- Test graph flows thoroughly
+
+### Tool Integration
+- Create tool wrappers for external services
+- Implement proper authentication and rate limiting
+- Use circuit breaker patterns for external dependencies
+
+## Database Interaction Patterns
+
+### Supabase Integration
+- Use connection pooling for database connections
+- Implement proper transaction management
+- Use parameterized queries to prevent SQL injection
+- Handle database timeouts and connection errors gracefully
+
+### Data Access Layer
+```python
+from supabase import create_client, Client
+from typing import Optional, List, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ConversationRepository:
+    def __init__(self, supabase_client: Client):
+        self.client = supabase_client
+    
+    async def save_conversation_state(
+        self, 
+        session_id: str, 
+        state: ConversationState
+    ) -> bool:
+        """Save conversation state to database."""
+        try:
+            result = self.client.table("conversation_states").upsert({
+                "session_id": session_id,
+                "state": state,
+                "updated_at": "now()"
+            }).execute()
+            
+            logger.info(f"Saved conversation state for session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save conversation state: {e}")
+            return False
+```
+
+## Testing Patterns
+
+### Unit Testing
+- Test each node in isolation with mock dependencies
+- Use pytest fixtures for common test data
+- Test both success and failure scenarios
+- Achieve minimum 80% test coverage
+
+### Integration Testing
+- Test complete graph flows end-to-end
+- Use test databases for integration tests
+- Mock external services in integration tests
+- Test error propagation through the graph
+
+### Test Structure
+```python
+import pytest
+from unittest.mock import AsyncMock, patch
+from src.nodes.intent_classification_node import intent_classification_node
+
+@pytest.fixture
+def sample_state():
+    return {
+        "user_id": "test_user",
+        "session_id": "test_session",
+        "messages": [{"content": "Hello, I need help"}],
+        "current_intent": None,
+        "intent_confidence": None,
+        "context": {},
+        "step_count": 0,
+        "errors": []
+    }
+
+@pytest.mark.asyncio
+async def test_intent_classification_success(sample_state):
+    with patch('src.nodes.intent_classification_node.classify_intent') as mock_classify:
+        mock_classify.return_value = AsyncMock(intent="greeting", confidence=0.95)
+        
+        result = await intent_classification_node(sample_state)
+        
+        assert result["current_intent"] == "greeting"
+        assert result["intent_confidence"] == 0.95
+        assert result["step_count"] == 1
+```
+
+## Code Organization
+
+### Module Structure
+- Keep modules focused on single responsibilities
+- Use clear module hierarchies
+- Implement proper abstractions and interfaces
+- Follow dependency inversion principles
+
+### Configuration Management
+- Use Pydantic settings for configuration
+- Support environment-specific configs
+- Validate configuration on startup
+- Document all configuration options
+
+## Performance Considerations
+
+### Async/Await Usage
+- Use async/await for I/O operations
+- Avoid blocking calls in async functions
+- Use asyncio.gather() for concurrent operations
+
+## Security Guidelines
+
+### Input Validation
+- Validate all inputs using Pydantic models
+- Sanitize user inputs before processing
+- Implement rate limiting for API endpoints
+- Use proper authentication and authorization
+
+### Secret Management
+- Never commit secrets to version control
+- Use environment variables for sensitive data
+- Implement secret rotation procedures
+- Use least-privilege access principles 
