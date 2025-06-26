@@ -1,0 +1,87 @@
+# Logging Configuration for Vyuu Copilot v2
+# This file contains logging settings that can be overridden per environment
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  json:
+    format: "%(asctime)s %(name)s %(levelname)s %(message)s"
+    class: pythonjsonlogger.jsonlogger.JsonFormatter
+  
+  detailed:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - Line %(lineno)d - %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/vyuu-copilot.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: json
+    filename: logs/vyuu-copilot-errors.log
+    maxBytes: 10485760
+    backupCount: 3
+    encoding: utf8
+
+loggers:
+  src:
+    level: DEBUG
+    handlers: [console, file]
+    propagate: no
+  
+  src.utils.database:
+    level: INFO
+    handlers: [console, file, error_file]
+    propagate: no
+  
+  src.utils.auth:
+    level: INFO
+    handlers: [console, file, error_file] 
+    propagate: no
+  
+  supabase:
+    level: WARNING
+    handlers: [console, file]
+    propagate: no
+
+root:
+  level: INFO
+  handlers: [console, file]
+
+# Environment-specific overrides
+environments:
+  development:
+    root:
+      level: DEBUG
+    handlers:
+      console:
+        level: DEBUG
+  
+  production:
+    root:
+      level: WARNING
+    handlers:
+      console:
+        level: WARNING
+        formatter: json
+    loggers:
+      src:
+        level: INFO 
