@@ -161,7 +161,7 @@ class ConnectionTester:
             for i in range(5):
                 task = db_client.execute_query(
                     "SELECT $1 as connection_id, pg_backend_pid() as pid",
-                    i,
+                    str(i),  # Convert to string
                     fetch_one=True
                 )
                 tasks.append(task)

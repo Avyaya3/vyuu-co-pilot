@@ -13,8 +13,12 @@ import asyncio
 from supabase import Client
 from gotrue.errors import AuthApiError, AuthRetryableError
 
-from ..config import get_config
-from .database import get_db_client, DatabaseConnectionError
+try:
+    from ..config import get_config
+    from .database import get_db_client, DatabaseConnectionError
+except ImportError:
+    from config import get_config
+    from utils.database import get_db_client, DatabaseConnectionError
 
 logger = logging.getLogger(__name__)
 

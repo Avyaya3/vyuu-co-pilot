@@ -5,9 +5,14 @@ This module handles all configuration settings including Supabase connection,
 database settings, and application configuration using Pydantic settings.
 """
 
-from typing import Optional
-from pydantic import BaseSettings, validator
+from typing import Optional, Annotated
+from pydantic_settings import BaseSettings
+from pydantic import validator, Field
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class SupabaseConfig(BaseSettings):
@@ -23,6 +28,7 @@ class SupabaseConfig(BaseSettings):
     class Config:
         env_prefix = "SUPABASE_"
         case_sensitive = False
+        extra = "ignore"
     
     @validator("url")
     def validate_url(cls, v: str) -> str:
@@ -35,7 +41,7 @@ class SupabaseConfig(BaseSettings):
 class DatabaseConfig(BaseSettings):
     """Database connection configuration."""
     
-    url: str
+    url: str = Field(..., alias='DATABASE_URL')  # Map to DATABASE_URL env var
     pool_size: int = 10
     max_overflow: int = 20
     pool_timeout: int = 30
@@ -44,6 +50,7 @@ class DatabaseConfig(BaseSettings):
     class Config:
         env_prefix = "DB_"
         case_sensitive = False
+        extra = "ignore"
     
     @validator("pool_size")
     def validate_pool_size(cls, v: int) -> int:
@@ -63,6 +70,7 @@ class AuthConfig(BaseSettings):
     class Config:
         env_prefix = ""
         case_sensitive = False
+        extra = "ignore"
     
     @validator("jwt_secret_key")
     def validate_secret_key(cls, v: str) -> str:
@@ -83,6 +91,7 @@ class APIConfig(BaseSettings):
     class Config:
         env_prefix = "API_"
         case_sensitive = False
+        extra = "ignore"
 
 
 class LoggingConfig(BaseSettings):
@@ -94,6 +103,7 @@ class LoggingConfig(BaseSettings):
     class Config:
         env_prefix = "LOG_"
         case_sensitive = False
+        extra = "ignore"
 
 
 class AppConfig(BaseSettings):
@@ -130,6 +140,7 @@ class AppConfig(BaseSettings):
         case_sensitive = False
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore extra environment variables
     
     @property
     def is_development(self) -> bool:
