@@ -1,0 +1,41 @@
+intent_parameters:
+  data_fetch:
+    critical:
+      - "entity_type"
+    optional:
+      - "time_period"
+      - "account_types" 
+      - "limit"
+      - "sort_by"
+      - "order"
+    description: "Retrieve and display financial data"
+
+  aggregate:
+    critical:
+      - "metric_type"
+    optional:
+      - "group_by"
+      - "time_period"
+      - "category_filter"
+      - "account_filter"
+    description: "Analyze and summarize financial data"
+
+  action:
+    critical:
+      - "action_type"
+    optional:
+      - "amount"
+      - "source_account"
+      - "target_account"
+      - "description"
+    description: "Execute financial operations and transactions"
+
+  unknown:
+    critical: []
+    optional: []
+    description: "Intent not clearly determined"
+
+  clarification:
+    critical: []
+    optional: []
+    description: "Request for additional information or clarification" 
