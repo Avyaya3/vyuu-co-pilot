@@ -38,6 +38,7 @@ dependencies = [
     "tenacity>=8.0.0",
     "pyjwt>=2.8.0",
     "gotrue>=1.0.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -88,6 +89,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests requiring external dependencies",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",
