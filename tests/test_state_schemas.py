@@ -215,7 +215,13 @@ class TestClarificationState:
         state = ClarificationState(
             user_input="Test input",
             missing_params=["param1", "param2"],
-            clarification_attempts=1
+            clarification_attempts=1,
+            missing_critical_params=["param1"],
+            parameter_priorities=["param1", "param2"],
+            normalization_suggestions={"acc": "account"},
+            ambiguity_flags={"amount": "ambiguous value"},
+            clarification_history=[{"turn": 1, "question": "What account?", "answer": "Checking"}],
+            extracted_parameters={"param1": "value1"}
         )
         
         # Inherited fields
@@ -224,9 +230,14 @@ class TestClarificationState:
         
         # Clarification specific fields
         assert state.missing_params == ["param1", "param2"]
+        assert state.missing_critical_params == ["param1"]
+        assert state.parameter_priorities == ["param1", "param2"]
+        assert state.normalization_suggestions == {"acc": "account"}
+        assert state.ambiguity_flags == {"amount": "ambiguous value"}
+        assert state.clarification_history == [{"turn": 1, "question": "What account?", "answer": "Checking"}]
         assert state.clarification_attempts == 1
         assert state.max_attempts == MAX_CLARIFICATION_ATTEMPTS
-        assert state.clarified_params == {}
+        assert state.extracted_parameters == {"param1": "value1"}
     
     def test_clarification_attempts_validation(self):
         """Test clarification attempts validation against max limit."""
@@ -268,6 +279,16 @@ class TestClarificationState:
             missing_params=[]
         )
         assert not state_complete.has_missing_params
+
+    def test_default_values(self):
+        """Test default values for new ClarificationState fields."""
+        state = ClarificationState(user_input="Test")
+        assert state.missing_critical_params == []
+        assert state.parameter_priorities == []
+        assert state.normalization_suggestions == {}
+        assert state.ambiguity_flags == {}
+        assert state.clarification_history == []
+        assert state.extracted_parameters == {}
 
 
 class TestOrchestratorState:
@@ -324,13 +345,18 @@ class TestStateTransitions:
         # Clarification specific fields initialized
         assert clarification_state.missing_params == []
         assert clarification_state.clarification_attempts == 0
-        assert clarification_state.clarified_params == {}
+        assert clarification_state.extracted_parameters == {}
+        assert clarification_state.missing_critical_params == []
+        assert clarification_state.parameter_priorities == []
+        assert clarification_state.normalization_suggestions == {}
+        assert clarification_state.ambiguity_flags == {}
+        assert clarification_state.clarification_history == []
     
     def test_from_clarification_state(self, main_state):
         """Test conversion from ClarificationState back to MainState with parameter merging."""
-        # Create clarification state with clarified parameters
+        # Create clarification state with extracted parameters
         clarification_state = StateTransitions.to_clarification_state(main_state)
-        clarification_state.clarified_params = {"new": "param", "another": "value"}
+        clarification_state.extracted_parameters = {"new": "param", "another": "value"}
         
         # Convert back to MainState
         result_state = StateTransitions.from_clarification_state(clarification_state)
@@ -636,7 +662,7 @@ class TestEdgeCases:
         )
         
         clarification_state = StateTransitions.to_clarification_state(main_state)
-        clarification_state.clarified_params = {
+        clarification_state.extracted_parameters = {
             "key1": "updated",  # Override existing
             "key3": "new"       # Add new
         }

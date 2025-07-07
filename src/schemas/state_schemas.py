@@ -205,14 +205,37 @@ class ClarificationState(MainState):
     Clarification state schema for parameter collection and validation.
     
     Features:
-    - Missing parameter tracking
+    - Missing parameter tracking (critical and non-critical)
     - Clarification attempt counting with limits
+    - Parameter prioritization and normalization
+    - Ambiguity flagging
+    - Clarification turn history
     - Automatic parameter merging
     """
     
-    missing_params: List[str] = Field(
+    missing_params: list[str] = Field(
         default_factory=list,
         description="Required parameters not yet collected"
+    )
+    missing_critical_params: list[str] = Field(
+        default_factory=list,
+        description="Subset of missing_params that are critical slots"
+    )
+    parameter_priorities: list[str] = Field(
+        default_factory=list,
+        description="Missing parameters ordered by question‑asking priority"
+    )
+    normalization_suggestions: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of user synonyms to canonical slot values suggested by LLM"
+    )
+    ambiguity_flags: dict[str, str] = Field(
+        default_factory=dict,
+        description="Any slots whose values are ambiguous and need disambiguation"
+    )
+    clarification_history: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Record of past clarification turns (questions asked and user answers)"
     )
     clarification_attempts: int = Field(
         0,
@@ -224,23 +247,22 @@ class ClarificationState(MainState):
         ge=1,
         description="Maximum allowed clarification attempts"
     )
-    clarified_params: Dict[str, Any] = Field(
+    extracted_parameters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Parameters collected during clarification"
+        description="Parameters extracted and normalized by the Missing‑Parameter Analysis node"
     )
-    
+
     @model_validator(mode='after')
     def validate_clarification_attempts(self):
-        """Ensure clarification attempts don't exceed maximum."""
         if self.clarification_attempts > self.max_attempts:
             raise ValueError(f"Clarification attempts ({self.clarification_attempts}) cannot exceed max_attempts ({self.max_attempts})")
         return self
-    
+
     @property
     def can_attempt_clarification(self) -> bool:
         """Check if more clarification attempts are allowed."""
         return self.clarification_attempts < self.max_attempts
-    
+
     @property
     def has_missing_params(self) -> bool:
         """Check if there are still missing parameters."""
@@ -302,7 +324,7 @@ class StateTransitions:
     @staticmethod
     def from_clarification_state(clarification_state: ClarificationState) -> MainState:
         """
-        Convert ClarificationState back to MainState merging clarified parameters.
+        Convert ClarificationState back to MainState merging extracted parameters.
         
         Args:
             clarification_state: Source ClarificationState to convert
@@ -310,8 +332,8 @@ class StateTransitions:
         Returns:
             MainState with merged parameters from clarification
         """
-        # Merge clarified_params into parameters
-        merged_params = {**clarification_state.parameters, **clarification_state.clarified_params}
+        # Merge extracted_parameters into parameters
+        merged_params = {**clarification_state.parameters, **clarification_state.extracted_parameters}
         
         return MainState(
             user_input=clarification_state.user_input,
