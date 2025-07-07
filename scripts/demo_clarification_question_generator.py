@@ -269,10 +269,11 @@ async def demo_follow_up_clarification():
 
 
 async def demo_max_attempts_scenario():
-    """Demo: Max attempts reached scenario."""
+    """Demo: Max attempts reached scenario - Exit with partial data."""
     
-    print("\n🎬 SCENARIO 4: Max Attempts Reached")
+    print("\n🎬 SCENARIO 4: Max Attempts Reached - Exit with Partial Data")
     print("User has been asked 3 questions but still missing critical information")
+    print("System should exit clarification subgraph with partial data per user flow")
     
     # Create ClarificationState at max attempts
     initial_state = ClarificationState(
@@ -302,14 +303,32 @@ async def demo_max_attempts_scenario():
     )
     
     try:
-        # This should trigger the max attempts fallback
-        question, result_state = await clarification_question_generator_node(initial_state)
-        print("✅ Max attempts fallback triggered successfully!")
+        # This should trigger the exit with partial data behavior
+        result, result_state = await clarification_question_generator_node(initial_state)
+        
+        if result == "EXIT_WITH_PARTIAL_DATA":
+            print("✅ Exit with partial data triggered successfully!")
+            print("\n🚪 EXIT SIGNAL DETAILS:")
+            print("-" * 50)
+            print(f"Exit Signal: {result}")
+            print(f"Exit Message: {result_state.metadata.get('exit_message', 'N/A')}")
+            print(f"Exit Reason: {result_state.metadata.get('exit_reason', 'N/A')}")
+            print(f"Remaining Missing Params: {result_state.metadata.get('remaining_missing_params', [])}")
+            print(f"Remaining Critical Params: {result_state.metadata.get('remaining_critical_params', [])}")
+            print(f"Clarification Status: {result_state.metadata.get('clarification_status', 'N/A')}")
+            
+            print("\n📤 FINAL CLARIFICATION STATE:")
+            print("-" * 50)
+            print(f"Attempts: {result_state.clarification_attempts}/{result_state.max_attempts}")
+            print(f"Exit Condition: {result_state.clarification_history[-1].get('exit_condition', False)}")
+            print(f"Partial Parameters Available: {json.dumps(result_state.extracted_parameters, indent=2)}")
+        else:
+            print(f"❌ Unexpected result: {result}")
+            print_question_generation(initial_state, result, result_state)
+            
     except Exception as e:
-        print(f"❌ Question generation failed: {e}")
+        print(f"❌ Max attempts handling failed: {e}")
         return
-    
-    print_question_generation(initial_state, question, result_state)
 
 
 async def demo_aggregate_intent():
@@ -400,9 +419,10 @@ async def main():
     print("• Avoids asking about parameters already in clarification history")
     print("• Incorporates normalization suggestions and ambiguity flags")
     print("• Provides intent-specific guidance and examples")
-    print("• Handles max attempts and edge cases gracefully")
+    print("• Exits with partial data when max attempts reached (per user flow)")
     print("• Uses natural, conversational language appropriate for financial context")
     print("• Updates clarification state with attempts and history tracking")
+    print("• Returns proper exit signals for clarification subgraph orchestration")
     print("=" * 80)
 
 

@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from src.nodes.clarification_question_generator_node import (
     clarification_question_generator_node,
     ClarificationQuestionGenerator,
-    QuestionTemplate
+    QuestionTemplate,
+    ClarificationResult
 )
 from src.schemas.state_schemas import ClarificationState, IntentType, Message, MessageRole
 
@@ -198,6 +199,11 @@ class TestClarificationQuestionGeneratorNode:
         assert len(updated_state.clarification_history) == 1
         assert updated_state.clarification_history[0]["question"] == question
         assert updated_state.clarification_history[0]["targeted_param"] == "amount"
+        assert updated_state.clarification_history[0]["exit_condition"] == False
+        
+        # Check continued clarification metadata
+        assert updated_state.metadata["clarification_status"] == "awaiting_user_response"
+        assert updated_state.metadata["current_question"] == question
         assert updated_state.clarification_history[0]["user_response"] is None
     
     async def test_llm_failure_fallback(self):
@@ -230,13 +236,16 @@ class TestClarificationQuestionGeneratorNode:
             
             question, updated_state = await clarification_question_generator_node(state)
         
-        # Should get fallback question
+        # Should get fallback question specific to the missing slot
         assert "amount" in question.lower()
         assert updated_state.clarification_attempts == 1
         assert len(updated_state.clarification_history) == 1
+        assert updated_state.clarification_history[0]["exit_condition"] == False
+        # Note: LLM failure is handled internally in generate_question, so node sees it as successful
+        assert updated_state.metadata["clarification_status"] == "awaiting_user_response"
     
     async def test_max_attempts_reached(self):
-        """Test behavior when max attempts are reached."""
+        """Test exit behavior when max attempts are reached."""
         state = ClarificationState(
             user_input="Transfer money",
             intent=IntentType.ACTION,
@@ -259,12 +268,21 @@ class TestClarificationQuestionGeneratorNode:
             clarification_history=[]
         )
         
-        question, updated_state = await clarification_question_generator_node(state)
+        exit_signal, updated_state = await clarification_question_generator_node(state)
         
-        assert "rephrase your request" in question
+        # Should exit with partial data instead of asking another question
+        assert exit_signal == "EXIT_WITH_PARTIAL_DATA"
         assert updated_state.clarification_attempts == 3  # Not incremented further
         assert len(updated_state.clarification_history) == 1
-        assert updated_state.clarification_history[0]["targeted_param"] == "fallback"
+        assert updated_state.clarification_history[0]["targeted_param"] == "max_attempts_exit"
+        assert updated_state.clarification_history[0]["exit_condition"] == True
+        
+        # Check exit metadata
+        assert updated_state.metadata["clarification_status"] == "max_attempts_reached"
+        assert "amount" in updated_state.metadata["exit_message"]
+        assert "before I can proceed" in updated_state.metadata["exit_message"]
+        assert updated_state.metadata["remaining_missing_params"] == ["amount"]
+        assert updated_state.metadata["remaining_critical_params"] == ["amount"]
     
     async def test_no_slots_to_ask(self):
         """Test behavior when no slots need to be asked about."""
@@ -295,6 +313,7 @@ class TestClarificationQuestionGeneratorNode:
         assert "additional information" in question
         assert updated_state.clarification_attempts == 1
         assert len(updated_state.clarification_history) == 1
+        assert updated_state.clarification_history[0]["exit_condition"] == False
     
     def test_question_post_processing(self):
         """Test question post-processing functionality."""
@@ -376,6 +395,7 @@ class TestClarificationQuestionGeneratorNode:
         
         assert "data" in question.lower() or "type" in question.lower()
         assert updated_state.clarification_attempts == 1
+        assert updated_state.clarification_history[0]["exit_condition"] == False
     
     async def test_normalization_and_ambiguity_integration(self):
         """Test integration of normalization suggestions and ambiguity flags."""
