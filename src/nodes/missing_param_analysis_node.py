@@ -3,18 +3,46 @@ import json
 from typing import Any, Dict, Optional
 from src.utils.parameter_config import get_parameter_config
 from src.schemas.state_schemas import ClarificationState, IntentType
-from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from src.schemas.generated_intent_schemas import (
+    DataFetchParams, 
+    AggregateParams, 
+    ActionParams,
+    INTENT_PARAM_MODELS as GENERATED_INTENT_PARAM_MODELS,
+    IntentCategory
+)
 from src.nodes.intent_classification_node import LLMClient
 import asyncio
 
 logger = logging.getLogger(__name__)
 
-# Helper: Map intent to Pydantic param model
-INTENT_PARAM_MODELS = {
-    IntentType.DATA_FETCH: DataFetchParams,
-    IntentType.AGGREGATE: AggregateParams,
-    IntentType.ACTION: ActionParams,
-}
+def get_pydantic_model_for_intent(intent: IntentType) -> Optional[type]:
+    """
+    Get the Pydantic parameter model for an intent type.
+    
+    Uses the auto-generated registry as the source of truth, converting
+    from IntentType (state schemas) to IntentCategory (generated schemas).
+    
+    Args:
+        intent: IntentType enum value
+        
+    Returns:
+        Pydantic model class or None if not found
+    """
+    # Convert IntentType to IntentCategory
+    intent_mapping = {
+        IntentType.DATA_FETCH: IntentCategory.DATA_FETCH,
+        IntentType.AGGREGATE: IntentCategory.AGGREGATE,
+        IntentType.ACTION: IntentCategory.ACTION,
+        IntentType.UNKNOWN: IntentCategory.UNKNOWN,
+        IntentType.CLARIFICATION: IntentCategory.CLARIFICATION,
+    }
+    
+    intent_category = intent_mapping.get(intent)
+    if intent_category is None:
+        logger.warning(f"No mapping found for IntentType: {intent}")
+        return None
+    
+    return GENERATED_INTENT_PARAM_MODELS.get(intent_category)
 
 def render_schema(intent: str, schemas: dict) -> str:
     """
@@ -25,7 +53,7 @@ def render_schema(intent: str, schemas: dict) -> str:
     critical = intent_schema.get("critical", [])
     optional = intent_schema.get("optional", [])
     # Try to get slot descriptions/types from Pydantic models
-    pydantic_model = INTENT_PARAM_MODELS.get(IntentType(intent), None)
+    pydantic_model = get_pydantic_model_for_intent(IntentType(intent))
     slot_fields = {}
     if pydantic_model:
         for name, field in pydantic_model.model_fields.items():
@@ -129,7 +157,7 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
     slot_names = [name for name in slot_names if name]  # Filter out empty strings
     
     # Use Pydantic for type info if available
-    pydantic_model = INTENT_PARAM_MODELS.get(IntentType(intent), None)
+    pydantic_model = get_pydantic_model_for_intent(IntentType(intent))
     validated_params = {}
     normalization_suggestions = llm_json.get("normalization_suggestions", {})
     ambiguity_flags = llm_json.get("ambiguity_flags", {})

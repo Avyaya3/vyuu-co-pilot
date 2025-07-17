@@ -502,15 +502,11 @@ class UserResponseProcessor:
         Returns:
             Dictionary mapping slot names to their types
         """
-        # Map intent to Pydantic model
-        intent_models = {
-            IntentType.DATA_FETCH: DataFetchParams,
-            IntentType.AGGREGATE: AggregateParams,
-            IntentType.ACTION: ActionParams,
-        }
+        # Import the helper function to get Pydantic model from auto-generated registry
+        from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
         
         slot_types = {}
-        pydantic_model = intent_models.get(intent)
+        pydantic_model = get_pydantic_model_for_intent(intent)
         
         if pydantic_model:
             for field_name, field_info in pydantic_model.model_fields.items():
