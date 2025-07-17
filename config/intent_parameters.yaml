@@ -1,33 +1,67 @@
 intent_parameters:
   data_fetch:
     critical:
-      - "entity_type"
+      - name: "entity_type"
+        type: "str"
+        description: "Type of data entity (transactions, accounts, balances, etc.)"
     optional:
-      - "time_period"
-      - "account_types" 
-      - "limit"
-      - "sort_by"
-      - "order"
+      - name: "time_period"
+        type: "str"
+        description: "Time range for data (last_month, last_3_months, specific_date, etc.)"
+      - name: "account_types"
+        type: "List[str]"
+        description: "Types of accounts to include (checking, savings, credit, etc.)"
+      - name: "limit"
+        type: "int"
+        description: "Maximum number of records to return"
+        constraints: {"ge": 1, "le": 1000}
+      - name: "sort_by"
+        type: "str"
+        description: "Field to sort results by"
+      - name: "order"
+        type: "str"
+        description: "Sort order (asc, desc)"
     description: "Retrieve and display financial data"
 
   aggregate:
     critical:
-      - "metric_type"
+      - name: "metric_type"
+        type: "str"
+        description: "Type of metric to calculate (sum, average, count, etc.)"
     optional:
-      - "group_by"
-      - "time_period"
-      - "category_filter"
-      - "account_filter"
+      - name: "group_by"
+        type: "str"
+        description: "Field to group results by"
+      - name: "time_period"
+        type: "str"
+        description: "Time range for aggregation"
+      - name: "category_filter"
+        type: "List[str]"
+        description: "Categories to include in aggregation"
+      - name: "account_filter"
+        type: "List[str]"
+        description: "Accounts to include in aggregation"
     description: "Analyze and summarize financial data"
 
   action:
     critical:
-      - "action_type"
+      - name: "action_type"
+        type: "str"
+        description: "Type of action to perform (transfer, payment, etc.)"
     optional:
-      - "amount"
-      - "source_account"
-      - "target_account"
-      - "description"
+      - name: "amount"
+        type: "float"
+        description: "Amount for the action"
+        constraints: {"ge": 0}
+      - name: "source_account"
+        type: "str"
+        description: "Source account for the action"
+      - name: "target_account"
+        type: "str"
+        description: "Target account for the action"
+      - name: "description"
+        type: "str"
+        description: "Description of the action"
     description: "Execute financial operations and transactions"
 
   unknown:

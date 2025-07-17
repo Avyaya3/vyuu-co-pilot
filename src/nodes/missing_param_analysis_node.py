@@ -3,7 +3,7 @@ import json
 from typing import Any, Dict, Optional
 from src.utils.parameter_config import get_parameter_config
 from src.schemas.state_schemas import ClarificationState, IntentType
-from src.schemas.intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 from src.nodes.intent_classification_node import LLMClient
 import asyncio
 
@@ -34,8 +34,20 @@ def render_schema(intent: str, schemas: dict) -> str:
                 "description": field.description or ""
             }
     def slot_line(slot):
-        info = slot_fields.get(slot, {"type": "Any", "description": ""})
-        return f"- {slot} ({info['type']}): {info['description']}"
+        # Handle both old format (string) and new format (dict)
+        if isinstance(slot, str):
+            # Old format - simple string
+            info = slot_fields.get(slot, {"type": "Any", "description": ""})
+            return f"- {slot} ({info['type']}): {info['description']}"
+        elif isinstance(slot, dict):
+            # New format - dictionary with name, type, description
+            slot_name = slot.get('name', 'unknown')
+            slot_type = slot.get('type', 'Any')
+            slot_description = slot.get('description', '')
+            return f"- {slot_name} ({slot_type}): {slot_description}"
+        else:
+            # Fallback for unexpected format
+            return f"- {str(slot)} (Any): No description available"
     lines = []
     if critical:
         lines.append("**Critical slots:**")
@@ -103,13 +115,25 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
 
     # Validate and normalize output
     # Get slot list from schema (critical+optional)
-    slot_list = schemas.get(intent, {}).get("critical", []) + schemas.get(intent, {}).get("optional", [])
+    critical_slots = schemas.get(intent, {}).get("critical", [])
+    optional_slots = schemas.get(intent, {}).get("optional", [])
+    slot_list = critical_slots + optional_slots
+    
+    # Extract slot names (handle both old format strings and new format dicts)
+    slot_names = []
+    for slot in slot_list:
+        if isinstance(slot, str):
+            slot_names.append(slot)
+        elif isinstance(slot, dict):
+            slot_names.append(slot.get('name', ''))
+    slot_names = [name for name in slot_names if name]  # Filter out empty strings
+    
     # Use Pydantic for type info if available
     pydantic_model = INTENT_PARAM_MODELS.get(IntentType(intent), None)
     validated_params = {}
     normalization_suggestions = llm_json.get("normalization_suggestions", {})
     ambiguity_flags = llm_json.get("ambiguity_flags", {})
-    for slot in slot_list:
+    for slot in slot_names:
         value = llm_json.get("extracted_parameters", {}).get(slot, None)
         # Type check using Pydantic if possible
         if pydantic_model and slot in pydantic_model.model_fields and value is not None:

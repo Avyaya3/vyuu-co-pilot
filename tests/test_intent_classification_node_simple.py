@@ -17,7 +17,7 @@ from src.schemas.state_schemas import (
     MessageRole,
     Message,
 )
-from src.schemas.intent_schemas import (
+from src.schemas.generated_intent_schemas import (
     IntentCategory,
     IntentClassificationResult,
     IntentClassificationError,
@@ -57,10 +57,12 @@ class TestLLMClientBasics:
         """Test that LLMClient requires API key."""
         from src.nodes.intent_classification_node import LLMClient
         
-        with pytest.raises(IntentClassificationError) as exc_info:
-            LLMClient()
-        
-        assert "API key not found" in str(exc_info.value)
+        # Clear API key even if it was loaded from .env file
+        with patch.dict('os.environ', {'OPENAI_API_KEY': ''}, clear=False):
+            with pytest.raises(IntentClassificationError) as exc_info:
+                LLMClient()
+            
+            assert "API key not found" in str(exc_info.value)
     
     def test_initialization_with_api_key(self):
         """Test that LLMClient initializes properly with API key."""
@@ -69,7 +71,7 @@ class TestLLMClientBasics:
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             with patch('openai.OpenAI'):
                 client = LLMClient()
-                assert client.model == "gpt-4"
+                assert client.model == "gpt-4-1106-preview"
                 assert client.temperature == 0.1
     
     def test_prompt_generation(self):

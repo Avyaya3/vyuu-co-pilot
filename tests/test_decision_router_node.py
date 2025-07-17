@@ -21,7 +21,7 @@ from src.nodes.decision_router_node import (
     get_routing_decision
 )
 from src.schemas.state_schemas import MainState, IntentType, MessageRole, Message
-from src.schemas.intent_schemas import ConfidenceLevel
+from src.schemas.generated_intent_schemas import ConfidenceLevel
 
 
 class TestRouterConfig:

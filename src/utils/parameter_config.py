@@ -70,7 +70,16 @@ class ParameterConfigManager:
         """
         intent_config = self._config_data.get('intent_parameters', {}).get(intent, {})
         critical_params = intent_config.get('critical', [])
-        return set(critical_params)
+        
+        # Handle both old format (list of strings) and new format (list of dicts)
+        param_names = []
+        for param in critical_params:
+            if isinstance(param, str):
+                param_names.append(param)
+            elif isinstance(param, dict):
+                param_names.append(param.get('name', ''))
+        
+        return set(filter(None, param_names))  # Filter out empty strings
     
     @lru_cache(maxsize=32)
     def get_optional_parameters(self, intent: str) -> Set[str]:
@@ -85,7 +94,16 @@ class ParameterConfigManager:
         """
         intent_config = self._config_data.get('intent_parameters', {}).get(intent, {})
         optional_params = intent_config.get('optional', [])
-        return set(optional_params)
+        
+        # Handle both old format (list of strings) and new format (list of dicts)
+        param_names = []
+        for param in optional_params:
+            if isinstance(param, str):
+                param_names.append(param)
+            elif isinstance(param, dict):
+                param_names.append(param.get('name', ''))
+        
+        return set(filter(None, param_names))  # Filter out empty strings
     
     @lru_cache(maxsize=32)
     def get_all_parameters(self, intent: str) -> Set[str]:

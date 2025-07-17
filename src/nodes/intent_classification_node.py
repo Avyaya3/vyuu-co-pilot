@@ -20,7 +20,7 @@ from src.schemas.state_schemas import (
     IntentType,
     ConversationContext,
 )
-from src.schemas.intent_schemas import (
+from src.schemas.generated_intent_schemas import (
     IntentClassificationResult,
     IntentClassificationError,
     FallbackIntentResult,

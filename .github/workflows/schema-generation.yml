@@ -1,0 +1,73 @@
+name: Auto-Generate Intent Schemas
+
+on:
+  push:
+    paths:
+      - 'config/intent_parameters.yaml'
+      - 'config/intent_parameters_enhanced.yaml'
+      - 'scripts/generate_intent_schemas.py'
+  pull_request:
+    paths:
+      - 'config/intent_parameters.yaml'
+      - 'config/intent_parameters_enhanced.yaml'
+      - 'scripts/generate_intent_schemas.py'
+
+jobs:
+  generate-schemas:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pydantic pyyaml
+    
+    - name: Generate intent schemas
+      run: |
+        python scripts/generate_intent_schemas.py
+    
+    - name: Check for schema changes
+      id: check_changes
+      run: |
+        if git diff --quiet src/schemas/generated_intent_schemas.py; then
+          echo "changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "changes=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Commit updated schemas
+      if: steps.check_changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add src/schemas/generated_intent_schemas.py
+        git commit -m "🤖 Auto-update intent schemas from YAML config [skip ci]"
+    
+    - name: Push changes
+      if: steps.check_changes.outputs.changes == 'true'
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
+    
+    - name: Validate generated schemas
+      run: |
+        python -c "
+        from src.schemas.generated_intent_schemas import DataFetchParams, IntentClassificationResult
+        print('✅ Generated schemas validation passed')
+        "
+    
+    - name: Run tests with new schemas
+      run: |
+        pip install pytest
+        python -m pytest tests/test_intent_classification_node_simple.py::TestLLMClientBasics::test_prompt_generation -v 

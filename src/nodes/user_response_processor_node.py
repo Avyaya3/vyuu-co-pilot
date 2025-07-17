@@ -18,7 +18,7 @@ import openai
 from src.schemas.state_schemas import ClarificationState, IntentType
 from src.nodes.intent_classification_node import LLMClient
 from src.utils.parameter_config import get_parameter_config
-from src.schemas.intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 
 logger = logging.getLogger(__name__)
 
