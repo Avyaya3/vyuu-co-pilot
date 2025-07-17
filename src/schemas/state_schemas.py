@@ -318,7 +318,7 @@ class StateTransitions:
             **main_state.model_dump(),
             missing_params=[],
             clarification_attempts=0,
-            clarified_params={}
+            extracted_parameters={}
         )
     
     @staticmethod

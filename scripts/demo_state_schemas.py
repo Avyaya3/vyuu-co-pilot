@@ -54,7 +54,7 @@ def print_state_info(state, title: str):
     if hasattr(state, 'missing_params'):
         print(f"  Missing Params: {state.missing_params}")
         print(f"  Clarification Attempts: {state.clarification_attempts}/{state.max_attempts}")
-        print(f"  Clarified Params: {state.clarified_params}")
+        print(f"  Extracted Params: {state.extracted_parameters}")
     
     if hasattr(state, 'execution_plan'):
         print(f"  Execution Plan: {state.execution_plan}")
@@ -151,7 +151,7 @@ def demo_clarification_flow(main_state):
     print_state_info(clarification_state, "ClarificationState (Missing Parameters)")
     
     # Simulate clarification collection
-    clarification_state.clarified_params = {
+    clarification_state.extracted_parameters = {
         "time_period": "last_6_months",
         "account_types": ["checking", "savings"]
     }
@@ -164,7 +164,7 @@ def demo_clarification_flow(main_state):
     
     print_state_info(merged_main_state, "MainState (After Parameter Merging)")
     print(f"🔄 Original parameters: {main_state.parameters}")
-    print(f"🔄 Clarified parameters: {clarification_state.clarified_params}")
+    print(f"🔄 Extracted parameters: {clarification_state.extracted_parameters}")
     print(f"🔄 Merged parameters: {merged_main_state.parameters}")
     
     return merged_main_state
