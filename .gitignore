@@ -198,6 +198,9 @@ jspm_packages/
 *.tsbuildinfo
 
 # Optional npm cache directory
+
+# Cursor IDE and MCP configuration (contains sensitive credentials)
+.cursor/
 .npm
 
 # Optional eslint cache

@@ -118,6 +118,7 @@ class SupabaseClient:
                 max_inactive_connection_lifetime=self.config.database.pool_recycle,
                 timeout=self.config.database.pool_timeout,
                 command_timeout=60,
+                statement_cache_size=0,  # Disable prepared statements for Supavisor compatibility
             )
             
             logger.info(
