@@ -107,3 +107,38 @@ class LLMClient:
         except Exception as e:
             logger.error(f"LLM chat completion failed: {e}")
             raise 
+
+    async def generate_response(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs ) -> str:
+        """
+        Generate a response using system and user prompts.
+        
+        Args:
+            system_prompt: System prompt for the LLM
+            user_prompt: User prompt for the LLM
+            temperature: Override default temperature
+            max_tokens: Override default max_tokens
+            **kwargs: Additional OpenAI parameters
+            
+        Returns:
+            Generated response string
+            
+        Raises:
+            Exception: If LLM call fails
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        return await self.chat_completion(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        ) 
