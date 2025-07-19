@@ -29,6 +29,7 @@ from src.schemas.generated_intent_schemas import (
     AggregateParams,
     ActionParams,
 )
+from src.utils.llm_client import LLMClient
 
 # Load environment variables
 load_dotenv()
@@ -36,293 +37,148 @@ load_dotenv()
 # Configure logger
 logger = logging.getLogger(__name__)
 
+# LLMClient moved to src/utils/llm_client.py for centralized access
 
-class LLMClient:
+
+class IntentClassifier:
     """
-    OpenAI LLM client for intent classification.
+    Main intent classifier with OpenAI LLM integration and fallback handling.
     
-    This class provides real OpenAI API integration for intent classification
-    with structured output and comprehensive error handling.
+    This class handles the full intent classification pipeline including
+    LLM calls, result parsing, validation, and fallback mechanisms.
     """
     
-    def __init__(self, model: str = "gpt-4-1106-preview", temperature: float = 0.1):
-        self.model = model
-        self.temperature = temperature
-        
-        # Initialize OpenAI client
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise IntentClassificationError(
-                "OpenAI API key not found. Please set OPENAI_API_KEY environment variable.",
-                error_type="configuration_error"
-            )
-        
-        self.client = openai.OpenAI(api_key=api_key)
-        logger.info(f"Initialized OpenAI client with model: {model}, temperature: {temperature}")
-    
-    async def classify_intent(self, user_input: str, conversation_context: str = "") -> Dict[str, Any]:
+    def __init__(self, llm_client: Optional[LLMClient] = None):
         """
-        Call OpenAI LLM for intent classification with structured output.
+        Initialize the intent classifier.
+        
+        Args:
+            llm_client: Optional LLM client instance. If not provided, creates new one.
+        """
+        self.llm_client = llm_client or LLMClient()
+        logger.info("Intent classifier initialized with centralized LLM client")
+    
+    async def classify_intent(self, user_input: str, conversation_context: str = "") -> IntentClassificationResult:
+        """
+        Classify user intent using centralized LLM client.
         
         Args:
             user_input: The user's input to classify
             conversation_context: Previous conversation context
             
         Returns:
-            Structured classification result
+            Structured intent classification result
             
         Raises:
-            IntentClassificationError: When LLM call fails
+            IntentClassificationError: When classification fails
         """
+        if not user_input or not user_input.strip():
+            raise IntentClassificationError(
+                "Empty user input provided",
+                error_type="validation_error",
+                user_input=user_input
+            )
+        
         try:
-            logger.debug(f"Calling OpenAI for intent classification: '{user_input[:50]}...'")
+            logger.debug(f"Classifying intent for input: '{user_input[:50]}...'")
             
-            # Create system prompt for intent classification
-            system_prompt = self._create_system_prompt()
-            
-            # Create user prompt with context
-            user_prompt = self._create_user_prompt(user_input, conversation_context)
-            
-            # Call OpenAI with structured output
-            response = self.client.chat.completions.create(
-                model=self.model,
-                temperature=self.temperature,
+            # Build system prompt for intent classification
+            system_prompt = """You are an AI assistant specialized in classifying user intents for a financial management application.
+
+Your task is to analyze user requests and classify them into one of these intent categories:
+
+1. **data_fetch**: User wants to retrieve/view existing financial data
+- Examples: "Show me my transactions", "What's my balance?", "List my accounts"
+- Extract parameters like: entity_type, time_period, account_types, limit, sort_by, order, filters
+
+2. **aggregate**: User wants to analyze/summarize financial data
+- Examples: "What's my total spending?", "Average monthly expenses", "Count transactions by category"
+- Extract parameters like: metric_type, group_by, time_period, category_filter, account_filter, comparison_period
+
+3. **action**: User wants to perform an action (transfer, payment, categorization, etc.)
+- Examples: "Transfer $100 to savings", "Pay my electric bill", "Categorize this transaction"
+- Extract parameters like: action_type, amount, source_account, target_account, description, schedule_date, confirmation_required
+
+4. **unknown**: Intent is unclear or doesn't fit the above categories
+
+CRITICAL: You must respond with a valid JSON object with this exact structure:
+{
+"intent": "data_fetch|aggregate|action|unknown",
+"confidence": 0.85,
+"reasoning": "brief explanation",
+"user_input_analysis": "analysis of the input",
+"missing_params": ["param1", "param2"],
+"clarification_needed": true,
+"data_fetch_params": {
+    "entity_type": "transactions",
+    "account_types": ["checking", "savings"],
+    "time_period": "last_month",
+    "limit": 10,
+    "sort_by": "date",
+    "order": "desc"
+},
+"aggregate_params": {
+    "metric_type": "sum",
+    "group_by": ["category", "month"],
+    "category_filter": ["groceries", "restaurants"],
+    "time_period": "last_year"
+},
+"action_params": {
+    "action_type": "transfer",
+    "amount": 100.0,
+    "source_account": "checking",
+    "target_account": "savings"
+}
+}
+
+**IMPORTANT DATA TYPE RULES:**
+- ALL array fields must be arrays, not strings: ["category"] not "category"
+- group_by must be an array: ["category", "date"] not "category"
+- category_filter must be an array: ["groceries", "dining"] not "groceries"
+- account_types must be an array: ["checking", "savings"] not "checking"
+- missing_params must be an array: ["amount", "account"] not "amount"
+- Only include the params object for the matched intent type
+- Set null for unused param objects
+
+Set confidence based on clarity: 0.8-1.0 (high), 0.5-0.79 (medium), 0.0-0.49 (low).
+Set clarification_needed=true if confidence < 0.7 or critical parameters are missing."""
+
+            # Build user prompt
+            user_prompt = f"""Classify this user request:
+
+User Input: "{user_input}"
+
+Recent Context:
+{conversation_context}
+
+Respond with valid JSON containing intent classification and extracted parameters."""
+
+            # Use simplified LLM client
+            response_content = await self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format={"type": "json_object"},
-                max_tokens=1000
+                temperature=0.1,  # Low temperature for consistent classification
+                response_format={"type": "json_object"}
             )
             
-            # Parse response
-            response_text = response.choices[0].message.content
-            classification = json.loads(response_text)
+            # Parse JSON response
+            llm_result = json.loads(response_content)
             
-            # Validate and normalize response
-            classification = self._validate_and_normalize_response(classification)
-            
-            logger.debug(f"OpenAI classification result: {classification['intent']} (confidence: {classification['confidence']})")
-            
-            return classification
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI JSON response: {e}")
-            raise IntentClassificationError(
-                f"Invalid JSON response from OpenAI: {str(e)}",
-                error_type="parsing_error",
-                user_input=user_input
-            )
-        except openai.APIError as e:
-            logger.error(f"OpenAI API error: {e}")
-            raise IntentClassificationError(
-                f"OpenAI API error: {str(e)}",
-                error_type="api_error", 
-                user_input=user_input
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error in LLM classification: {e}")
-            raise IntentClassificationError(
-                f"LLM call failed: {str(e)}",
-                error_type="llm_error",
-                user_input=user_input
-            )
-    
-    def _create_system_prompt(self) -> str:
-        """Create system prompt for intent classification."""
-        return """You are an AI assistant specialized in classifying user intents for a financial management application.
-
-        Your task is to analyze user requests and classify them into one of these intent categories:
-
-        1. **data_fetch**: User wants to retrieve/view existing financial data
-        - Examples: "Show me my transactions", "What's my balance?", "List my accounts"
-        - Extract parameters like: entity_type, time_period, account_types, limit, sort_by, order, filters
-
-        2. **aggregate**: User wants to analyze/summarize financial data
-        - Examples: "What's my total spending?", "Average monthly expenses", "Count transactions by category"
-        - Extract parameters like: metric_type, group_by, time_period, category_filter, account_filter, comparison_period
-
-        3. **action**: User wants to perform an action (transfer, payment, categorization, etc.)
-        - Examples: "Transfer $100 to savings", "Pay my electric bill", "Categorize this transaction"
-        - Extract parameters like: action_type, amount, source_account, target_account, description, schedule_date, confirmation_required
-
-        4. **unknown**: Intent is unclear or doesn't fit the above categories
-
-        CRITICAL: You must respond with a valid JSON object with this exact structure:
-        {
-          "intent": "data_fetch|aggregate|action|unknown",
-          "confidence": 0.85,
-          "reasoning": "brief explanation",
-          "user_input_analysis": "analysis of the input",
-          "missing_params": ["param1", "param2"],
-          "clarification_needed": true,
-          "data_fetch_params": {
-            "entity_type": "transactions",
-            "account_types": ["checking", "savings"],
-            "time_period": "last_month",
-            "limit": 10,
-            "sort_by": "date",
-            "order": "desc"
-          },
-          "aggregate_params": {
-            "metric_type": "sum",
-            "group_by": ["category", "month"],
-            "category_filter": ["groceries", "restaurants"],
-            "time_period": "last_year"
-          },
-          "action_params": {
-            "action_type": "transfer",
-            "amount": 100.0,
-            "source_account": "checking",
-            "target_account": "savings"
-          }
-        }
-
-        **IMPORTANT DATA TYPE RULES:**
-        - ALL array fields must be arrays, not strings: ["category"] not "category"
-        - group_by must be an array: ["category", "date"] not "category"
-        - category_filter must be an array: ["groceries", "dining"] not "groceries"
-        - account_types must be an array: ["checking", "savings"] not "checking"
-        - missing_params must be an array: ["amount", "account"] not "amount"
-        - Only include the params object for the matched intent type
-        - Set null for unused param objects
-
-        Set confidence based on clarity: 0.8-1.0 (high), 0.5-0.79 (medium), 0.0-0.49 (low).
-        Set clarification_needed=true if confidence < 0.7 or critical parameters are missing."""
-
-    def _create_user_prompt(self, user_input: str, conversation_context: str) -> str:
-        """Create user prompt with input and context."""
-        prompt_parts = []
-        
-        if conversation_context:
-            prompt_parts.append(f"Previous conversation context:\n{conversation_context}\n")
-        
-        prompt_parts.append(f"User request to classify: \"{user_input}\"")
-        prompt_parts.append("\nAnalyze this request and respond with the required JSON format.")
-        
-        return "\n".join(prompt_parts)
-    
-    def _validate_and_normalize_response(self, classification: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate and normalize the OpenAI response."""
-        # Ensure required fields exist
-        required_fields = ["intent", "confidence", "reasoning", "user_input_analysis"]
-        for field in required_fields:
-            if field not in classification:
-                raise ValueError(f"Missing required field: {field}")
-        
-        # Normalize intent to IntentCategory enum
-        intent_str = classification["intent"].lower()
-        intent_mapping = {
-            "data_fetch": IntentCategory.DATA_FETCH,
-            "aggregate": IntentCategory.AGGREGATE,
-            "action": IntentCategory.ACTION,
-            "unknown": IntentCategory.UNKNOWN
-        }
-        
-        if intent_str not in intent_mapping:
-            logger.warning(f"Unknown intent '{intent_str}', defaulting to UNKNOWN")
-            classification["intent"] = IntentCategory.UNKNOWN
-            classification["confidence"] = min(classification.get("confidence", 0.0), 0.3)
-        else:
-            classification["intent"] = intent_mapping[intent_str]
-        
-        # Ensure confidence is in valid range
-        confidence = classification.get("confidence", 0.0)
-        classification["confidence"] = max(0.0, min(1.0, float(confidence)))
-        
-        # Ensure optional fields exist
-        classification.setdefault("missing_params", [])
-        classification.setdefault("clarification_needed", False)
-        classification.setdefault("data_fetch_params", None)
-        classification.setdefault("aggregate_params", None) 
-        classification.setdefault("action_params", None)
-        
-        # Auto-set clarification_needed based on confidence and missing params
-        if (classification["confidence"] < 0.7 or 
-            len(classification["missing_params"]) > 0 or
-            classification["intent"] == IntentCategory.UNKNOWN):
-            classification["clarification_needed"] = True
-        
-        return classification
-
-
-class IntentClassifier:
-    """
-    Main intent classifier with OpenAI LLM integration and fallback handling.
-    """
-    
-    def __init__(self, llm_client: Optional[LLMClient] = None):
-        self.llm_client = llm_client or LLMClient()
-        logger.info("Intent classifier initialized with OpenAI integration")
-    
-    async def classify_intent(
-        self, 
-        user_input: str, 
-        conversation_context: str = ""
-    ) -> IntentClassificationResult:
-        """
-        Classify user intent with comprehensive error handling.
-        
-        Args:
-            user_input: The user's input to classify
-            conversation_context: Previous conversation context for better classification
-            
-        Returns:
-            IntentClassificationResult with intent, confidence, and parameters
-            
-        Raises:
-            IntentClassificationError: When classification fails completely
-        """
-        start_time = datetime.now(timezone.utc)
-        
-        try:
-            logger.info(f"Starting intent classification for input: '{user_input[:50]}...'")
-            
-            # Validate input
-            if not user_input or not user_input.strip():
-                raise IntentClassificationError(
-                    "Empty or whitespace-only user input",
-                    error_type="validation_error",
-                    user_input=user_input
-                )
-            
-            # Call LLM for classification
-            llm_result = await self.llm_client.classify_intent(user_input, conversation_context)
-            
-            # Convert to structured result
+            # Parse and validate result
             classification_result = self._parse_llm_result(llm_result, user_input)
             
-            # Log success
-            processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-            logger.info(
-                f"Intent classification successful: {classification_result.intent} "
-                f"(confidence: {classification_result.confidence:.2f}, "
-                f"processing_time: {processing_time:.3f}s)"
-            )
+            logger.debug(f"Intent classification successful: {classification_result.intent} (confidence: {classification_result.confidence})")
             
             return classification_result
             
-        except IntentClassificationError:
-            # Re-raise known errors
-            raise
-            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            return self._create_fallback_result(e, user_input)
         except Exception as e:
-            # Handle unexpected errors with fallback
-            logger.error(f"Unexpected error during intent classification: {e}")
-            
-            try:
-                # Attempt fallback classification
-                fallback_result = self._create_fallback_result(e, user_input)
-                logger.warning(f"Using fallback classification: {fallback_result.intent}")
-                return fallback_result.to_classification_result()
-                
-            except Exception as fallback_error:
-                logger.error(f"Fallback classification also failed: {fallback_error}")
-                raise IntentClassificationError(
-                    f"Classification failed completely: {str(e)}",
-                    error_type="complete_failure",
-                    user_input=user_input
-                )
+            logger.error(f"Intent classification failed: {e}")
+            return self._create_fallback_result(e, user_input)
     
     def _parse_llm_result(self, llm_result: Dict[str, Any], user_input: str) -> IntentClassificationResult:
         """

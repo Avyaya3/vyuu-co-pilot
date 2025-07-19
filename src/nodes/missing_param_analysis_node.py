@@ -10,7 +10,7 @@ from src.schemas.generated_intent_schemas import (
     INTENT_PARAM_MODELS as GENERATED_INTENT_PARAM_MODELS,
     IntentCategory
 )
-from src.nodes.intent_classification_node import LLMClient
+from src.utils.llm_client import LLMClient
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -119,19 +119,16 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
     """
     llm_client = LLMClient()
     try:
-        # Use OpenAI best practice: system+user prompt, expect JSON
-        response = await asyncio.to_thread(
-            llm_client.client.chat.completions.create,
-            model=llm_client.model,
-            temperature=llm_client.temperature,
+        # Use simplified LLM client
+        response_text = await llm_client.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a careful slot-filling assistant for a financial assistant app. Always return valid JSON."},
                 {"role": "user", "content": prompt}
             ],
+            temperature=0.1,  # Low temperature for consistent analysis
             response_format={"type": "json_object"},
             max_tokens=1000
         )
-        response_text = response.choices[0].message.content
         logger.info(f"[MissingParamAnalysis] LLM raw response: {response_text}")
         llm_json = json.loads(response_text)
     except json.JSONDecodeError as e:

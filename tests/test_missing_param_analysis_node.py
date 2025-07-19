@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import json
 from unittest.mock import patch, AsyncMock
 from src.nodes.missing_param_analysis_node import missing_param_analysis_node
 from src.schemas.state_schemas import ClarificationState, IntentType
@@ -22,19 +23,25 @@ class TestMissingParamAnalysisNode:
         )
 
     @patch("src.nodes.missing_param_analysis_node.LLMClient")
-    async def test_successful_llm_enrichment(self, mock_llm, base_state):
+    async def test_successful_llm_enrichment(self, mock_llm_class, base_state):
         """Test that the node enriches ClarificationState with LLM output."""
-        # Mock LLM response
-        mock_llm.return_value.client.chat.completions.create.return_value.choices = [
-            type("obj", (), {"message": type("obj", (), {"content": """
-            {"extracted_parameters": {"action_type": "transfer", "amount": 500.0, "source_account": "checking", "target_account": "savings"},
-              "missing_params": [],
-              "missing_critical_params": [],
-              "parameter_priorities": ["amount", "source_account", "target_account"],
-              "normalization_suggestions": {"checking acct": "checking"},
-              "ambiguity_flags": {}}
-            """})})
-        ]
+        # Mock LLM client
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion = AsyncMock(return_value=json.dumps({
+            "extracted_parameters": {
+                "action_type": "transfer", 
+                "amount": 500.0, 
+                "source_account": "checking", 
+                "target_account": "savings"
+            },
+            "missing_params": [],
+            "missing_critical_params": [],
+            "parameter_priorities": ["amount", "source_account", "target_account"],
+            "normalization_suggestions": {"checking acct": "checking"},
+            "ambiguity_flags": {}
+        }))
+        mock_llm_class.return_value = mock_llm
+        
         result = await missing_param_analysis_node(base_state)
         assert result.extracted_parameters["amount"] == 500.0
         assert result.missing_params == []
@@ -46,12 +53,13 @@ class TestMissingParamAnalysisNode:
         assert result.max_attempts == base_state.max_attempts
 
     @patch("src.nodes.missing_param_analysis_node.LLMClient")
-    async def test_llm_malformed_json(self, mock_llm, base_state):
+    async def test_llm_malformed_json(self, mock_llm_class, base_state):
         """Test that malformed LLM output is handled gracefully."""
-        # LLM returns invalid JSON
-        mock_llm.return_value.client.chat.completions.create.return_value.choices = [
-            type("obj", (), {"message": type("obj", (), {"content": "not a json"})})
-        ]
+        # Mock LLM client that returns invalid JSON
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion = AsyncMock(return_value="not a json")
+        mock_llm_class.return_value = mock_llm
+        
         result = await missing_param_analysis_node(base_state)
         # Should return a copy of the prior state
         assert result.extracted_parameters == base_state.extracted_parameters
@@ -59,19 +67,25 @@ class TestMissingParamAnalysisNode:
         assert result.missing_critical_params == base_state.missing_critical_params
 
     @patch("src.nodes.missing_param_analysis_node.LLMClient")
-    async def test_type_validation_and_ambiguity(self, mock_llm, base_state):
+    async def test_type_validation_and_ambiguity(self, mock_llm_class, base_state):
         """Test that invalid slot values are set to null and ambiguity_flags updated."""
-        # LLM returns invalid type for amount (should be float)
-        mock_llm.return_value.client.chat.completions.create.return_value.choices = [
-            type("obj", (), {"message": type("obj", (), {"content": """
-            {"extracted_parameters": {"action_type": "transfer", "amount": "five hundred", "source_account": "checking", "target_account": "savings"},
-              "missing_params": ["amount"],
-              "missing_critical_params": ["amount"],
-              "parameter_priorities": ["amount"],
-              "normalization_suggestions": {},
-              "ambiguity_flags": {}}
-            """})})
-        ]
+        # Mock LLM client that returns invalid type for amount
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion = AsyncMock(return_value=json.dumps({
+            "extracted_parameters": {
+                "action_type": "transfer", 
+                "amount": "five hundred", 
+                "source_account": "checking", 
+                "target_account": "savings"
+            },
+            "missing_params": ["amount"],
+            "missing_critical_params": ["amount"],
+            "parameter_priorities": ["amount"],
+            "normalization_suggestions": {},
+            "ambiguity_flags": {}
+        }))
+        mock_llm_class.return_value = mock_llm
+        
         result = await missing_param_analysis_node(base_state)
         # amount should be set to None due to type error
         assert result.extracted_parameters["amount"] is None
@@ -81,18 +95,25 @@ class TestMissingParamAnalysisNode:
         assert result.missing_critical_params == ["amount"]
 
     @patch("src.nodes.missing_param_analysis_node.LLMClient")
-    async def test_all_required_fields_present(self, mock_llm, base_state):
+    async def test_all_required_fields_present(self, mock_llm_class, base_state):
         """Test that all required fields are present in the output state."""
-        mock_llm.return_value.client.chat.completions.create.return_value.choices = [
-            type("obj", (), {"message": type("obj", (), {"content": """
-            {"extracted_parameters": {"action_type": "transfer", "amount": 100.0, "source_account": "checking", "target_account": "savings"},
-              "missing_params": [],
-              "missing_critical_params": [],
-              "parameter_priorities": ["amount"],
-              "normalization_suggestions": {"checking acct": "checking"},
-              "ambiguity_flags": {}}
-            """})})
-        ]
+        # Mock LLM client
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion = AsyncMock(return_value=json.dumps({
+            "extracted_parameters": {
+                "action_type": "transfer", 
+                "amount": 100.0, 
+                "source_account": "checking", 
+                "target_account": "savings"
+            },
+            "missing_params": [],
+            "missing_critical_params": [],
+            "parameter_priorities": ["amount"],
+            "normalization_suggestions": {"checking acct": "checking"},
+            "ambiguity_flags": {}
+        }))
+        mock_llm_class.return_value = mock_llm
+        
         result = await missing_param_analysis_node(base_state)
         # All required fields should be present
         assert hasattr(result, "extracted_parameters")

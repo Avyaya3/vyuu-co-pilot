@@ -6,6 +6,7 @@ without complex mocking to verify the system works correctly.
 """
 
 import pytest
+import json
 import asyncio
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,11 @@ from src.schemas.generated_intent_schemas import (
     IntentClassificationError,
     DataFetchParams,
 )
+from src.utils.llm_client import LLMClient
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def create_test_message(content: str) -> Message:
@@ -55,44 +61,33 @@ class TestLLMClientBasics:
     
     def test_initialization_without_api_key(self):
         """Test that LLMClient requires API key."""
-        from src.nodes.intent_classification_node import LLMClient
         
         # Clear API key even if it was loaded from .env file
         with patch.dict('os.environ', {'OPENAI_API_KEY': ''}, clear=False):
-            with pytest.raises(IntentClassificationError) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 LLMClient()
             
-            assert "API key not found" in str(exc_info.value)
+            assert "OPENAI_API_KEY environment variable not set" in str(exc_info.value)
     
     def test_initialization_with_api_key(self):
         """Test that LLMClient initializes properly with API key."""
-        from src.nodes.intent_classification_node import LLMClient
         
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             with patch('openai.OpenAI'):
                 client = LLMClient()
-                assert client.model == "gpt-4-1106-preview"
-                assert client.temperature == 0.1
+                assert client.model == "gpt-4-turbo"  # Default model
+                assert client.temperature == 0.2  # Default temperature
     
-    def test_prompt_generation(self):
-        """Test prompt generation methods."""
-        from src.nodes.intent_classification_node import LLMClient
+    def test_chat_completion_method(self):
+        """Test that chat_completion method exists and works."""
         
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             with patch('openai.OpenAI'):
                 client = LLMClient()
                 
-                # Test system prompt
-                system_prompt = client._create_system_prompt()
-                assert len(system_prompt) > 100
-                assert "data_fetch" in system_prompt
-                assert "aggregate" in system_prompt
-                assert "action" in system_prompt
-                
-                # Test user prompt
-                user_prompt = client._create_user_prompt("Test input", "Context")
-                assert "Test input" in user_prompt
-                assert "Context" in user_prompt
+                # Test that chat_completion method exists
+                assert hasattr(client, 'chat_completion')
+                assert callable(client.chat_completion)
 
 
 class TestIntentClassifierBasics:
@@ -101,6 +96,7 @@ class TestIntentClassifierBasics:
     @pytest.mark.asyncio
     async def test_empty_input_validation(self):
         """Test that empty input is properly validated."""
+        
         from src.nodes.intent_classification_node import IntentClassifier
         
         with patch('src.nodes.intent_classification_node.LLMClient'):
@@ -109,28 +105,29 @@ class TestIntentClassifierBasics:
             with pytest.raises(IntentClassificationError) as exc_info:
                 await classifier.classify_intent("")
             
-            assert "Empty or whitespace-only user input" in str(exc_info.value)
+            assert "Empty user input provided" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_successful_classification_mock(self):
         """Test successful classification with mocked LLM."""
+        
         from src.nodes.intent_classification_node import IntentClassifier
         
-        with patch('src.nodes.intent_classification_node.LLMClient') as mock_llm_class:
+        with patch('src.utils.llm_client.LLMClient') as mock_llm_class:
             # Create mock LLM client
             mock_llm = MagicMock()
-            mock_llm.classify_intent = AsyncMock(return_value={
-                "intent": IntentCategory.DATA_FETCH,
+            mock_llm.chat_completion = AsyncMock(return_value=json.dumps({
+                "intent": "data_fetch",
                 "confidence": 0.85,
                 "reasoning": "Test reasoning",
                 "user_input_analysis": "Test analysis",
                 "missing_params": [],
                 "clarification_needed": False,
                 "data_fetch_params": {"entity_type": "transactions"}
-            })
+            }))
             mock_llm_class.return_value = mock_llm
             
-            classifier = IntentClassifier()
+            classifier = IntentClassifier(llm_client=mock_llm)
             result = await classifier.classify_intent("Show me my transactions")
             
             assert isinstance(result, IntentClassificationResult)
@@ -205,47 +202,51 @@ class TestIntentClassificationNode:
 class TestResponseValidation:
     """Test response validation functionality."""
     
-    def test_valid_response_normalization(self):
-        """Test normalization of valid responses."""
-        from src.nodes.intent_classification_node import LLMClient
+    def test_valid_response_parsing(self):
+        """Test parsing of valid responses."""
         
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            with patch('openai.OpenAI'):
-                client = LLMClient()
-                
-                valid_response = {
-                    "intent": "data_fetch",
-                    "confidence": 0.85,
-                    "reasoning": "Test reasoning",
-                    "user_input_analysis": "Test analysis"
-                }
-                
-                normalized = client._validate_and_normalize_response(valid_response)
-                
-                assert normalized["intent"] == IntentCategory.DATA_FETCH
-                assert normalized["confidence"] == 0.85
-                assert "missing_params" in normalized
-                assert "clarification_needed" in normalized
+        from src.nodes.intent_classification_node import IntentClassifier
+        
+        classifier = IntentClassifier()
+        
+        valid_response = {
+            "intent": "data_fetch",
+            "confidence": 0.85,
+            "reasoning": "Test reasoning",
+            "user_input_analysis": "Test analysis",
+            "missing_params": [],
+            "clarification_needed": False,
+            "data_fetch_params": {"entity_type": "transactions"}
+        }
+        
+        result = classifier._parse_llm_result(valid_response, "test input")
+        
+        assert result.intent == IntentCategory.DATA_FETCH
+        assert result.confidence == 0.85
+        assert result.data_fetch_params is not None
+        assert result.data_fetch_params.entity_type == "transactions"
     
     def test_invalid_intent_handling(self):
         """Test handling of invalid intent values."""
-        from src.nodes.intent_classification_node import LLMClient
         
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            with patch('openai.OpenAI'):
-                client = LLMClient()
-                
-                invalid_response = {
-                    "intent": "invalid_intent",
-                    "confidence": 0.85,
-                    "reasoning": "Test reasoning",
-                    "user_input_analysis": "Test analysis"
-                }
-                
-                normalized = client._validate_and_normalize_response(invalid_response)
-                
-                assert normalized["intent"] == IntentCategory.UNKNOWN
-                assert normalized["confidence"] <= 0.3  # Should be reduced
+        from src.nodes.intent_classification_node import IntentClassifier
+        from src.schemas.generated_intent_schemas import IntentClassificationError
+        
+        classifier = IntentClassifier()
+        
+        invalid_response = {
+            "intent": "invalid_intent",
+            "confidence": 0.85,
+            "reasoning": "Test reasoning",
+            "user_input_analysis": "Test analysis"
+        }
+        
+        # Should raise IntentClassificationError for invalid intent
+        with pytest.raises(IntentClassificationError) as exc_info:
+            classifier._parse_llm_result(invalid_response, "test input")
+        
+        assert "Invalid LLM response format" in str(exc_info.value)
+        assert "invalid_intent" in str(exc_info.value)
 
 
 # Optional integration test

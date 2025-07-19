@@ -2,7 +2,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional, Set, Union, Literal
 from src.schemas.state_schemas import ClarificationState, IntentType
-from src.nodes.intent_classification_node import LLMClient
+from src.utils.llm_client import LLMClient
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -209,19 +209,15 @@ Return only the question text, nothing else.
 """
         
         try:
-            # Call LLM
-            response = await asyncio.to_thread(
-                self.llm_client.client.chat.completions.create,
-                model=self.llm_client.model,
-                temperature=0.7,  # Slightly higher temperature for natural questions
+            # Call LLM using simplified client
+            question = await self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are a helpful financial assistant. Generate clear, friendly clarification questions for users."},
                     {"role": "user", "content": full_prompt}
                 ],
+                temperature=0.7,  # Slightly higher temperature for natural questions
                 max_tokens=150
             )
-            
-            question = response.choices[0].message.content.strip()
             logger.info(f"[ClarificationQuestionGenerator] Raw LLM response: {question}")
             
             # Post-process the question

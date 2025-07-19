@@ -16,7 +16,7 @@ from decimal import Decimal, InvalidOperation
 import openai
 
 from src.schemas.state_schemas import ClarificationState, IntentType
-from src.nodes.intent_classification_node import LLMClient
+from src.utils.llm_client import LLMClient
 from src.utils.parameter_config import get_parameter_config
 from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 
@@ -394,20 +394,18 @@ class UserResponseProcessor:
                 user_response, target_slots, normalization_suggestions, ambiguity_flags, context
             )
             
-            # Call LLM
-            response = self.llm_client.client.chat.completions.create(
-                model=self.llm_client.model,
-                temperature=self.llm_client.temperature,
+            # Call LLM using simplified client
+            response_text = await self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
+                temperature=0.1,  # Low temperature for consistent parsing
                 response_format={"type": "json_object"},
                 max_tokens=1000
             )
             
             # Parse response
-            response_text = response.choices[0].message.content
             parsed_result = json.loads(response_text)
             
             # Extract fields with defaults

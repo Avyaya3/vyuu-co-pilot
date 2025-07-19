@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, validator
 
 
 # Configuration Constants
@@ -651,3 +651,35 @@ class StateValidator:
                 raise ValueError("Intent should not change during transitions unless originally unknown")
         
         return True 
+
+
+class PlanStep(BaseModel):
+    """
+    Individual step in an execution plan.
+    """
+    
+    tool_name: str = Field(description="Name of the tool to execute")
+    operation: str = Field(description="Operation to perform with the tool")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the tool operation")
+    step_id: Optional[str] = Field(None, description="Unique identifier for this step")
+    
+    class Config:
+        extra = "forbid"
+
+
+class ExecutionPlan(BaseModel):
+    """
+    Complete execution plan with validated steps.
+    """
+    
+    steps: List[PlanStep] = Field(default_factory=list, description="List of execution steps")
+    total_steps: Optional[int] = Field(None, description="Total number of steps in the plan")
+    
+    @model_validator(mode='after')
+    def validate_total_steps(self):
+        """Set total_steps to match the number of steps."""
+        self.total_steps = len(self.steps)
+        return self
+    
+    class Config:
+        extra = "forbid" 

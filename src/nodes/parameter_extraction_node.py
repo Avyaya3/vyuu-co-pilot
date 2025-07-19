@@ -16,7 +16,7 @@ from decimal import Decimal, InvalidOperation
 
 from src.schemas.state_schemas import OrchestratorState, IntentType, MessageManager, MainState
 from src.schemas.generated_intent_schemas import INTENT_PARAM_MODELS, IntentCategory
-from src.nodes.intent_classification_node import LLMClient
+from src.utils.llm_client import LLMClient
 from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
 
 logger = logging.getLogger(__name__)
@@ -402,10 +402,7 @@ class ParameterExtractor:
             
             logger.debug(f"Calling LLM for parameter extraction: {intent}")
             
-            response = await asyncio.to_thread(
-                self.llm_client.client.chat.completions.create,
-                model=self.llm_client.model,
-                temperature=self.llm_client.temperature,
+            response = await self.llm_client.chat_completion(
                 messages=[
                     {
                         "role": "system", 
@@ -413,14 +410,14 @@ class ParameterExtractor:
                     },
                     {"role": "user", "content": prompt}
                 ],
+                temperature=0.1,  # Low temperature for precise extraction
                 response_format={"type": "json_object"},
                 max_tokens=1500
             )
             
-            response_text = response.choices[0].message.content
-            logger.debug(f"LLM response: {response_text}")
+            logger.debug(f"LLM response: {response}")
             
-            parsed_response = json.loads(response_text)
+            parsed_response = json.loads(response)
             
             parameters = parsed_response.get("parameters", {})
             confidence = parsed_response.get("confidence", 0.0)

@@ -250,10 +250,8 @@ class TestParameterExtractor:
     @pytest.fixture
     def mock_llm_client(self):
         """Create a mock LLM client."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps({
+        mock_client = AsyncMock()
+        mock_client.chat_completion = AsyncMock(return_value=json.dumps({
             "parameters": {
                 "entity_type": "transactions",
                 "limit": 10,
@@ -262,8 +260,7 @@ class TestParameterExtractor:
             },
             "confidence": 0.9,
             "reasoning": "Successfully extracted all parameters from user input"
-        })
-        mock_client.client.chat.completions.create.return_value = mock_response
+        }))
         
         return mock_client
     
@@ -322,10 +319,7 @@ class TestParameterExtractor:
     async def test_extract_parameters_with_llm_json_error(self, parameter_extractor):
         """Test parameter extraction with JSON parsing error."""
         # Mock invalid JSON response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "invalid json"
-        parameter_extractor.llm_client.client.chat.completions.create.return_value = mock_response
+        parameter_extractor.llm_client.chat_completion = AsyncMock(return_value="invalid json")
         
         parameters, confidence, reasoning = await parameter_extractor.extract_parameters_with_llm(
             IntentType.DATA_FETCH,
@@ -537,11 +531,8 @@ class TestParameterExtractionIntegration:
         }
         
         with patch('src.nodes.parameter_extraction_node.LLMClient') as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(mock_llm_response)
-            mock_llm.client.chat.completions.create.return_value = mock_response
+            mock_llm = AsyncMock()
+            mock_llm.chat_completion = AsyncMock(return_value=json.dumps(mock_llm_response))
             mock_llm_class.return_value = mock_llm
             
             # Execute parameter extraction
@@ -583,11 +574,8 @@ class TestParameterExtractionIntegration:
         }
         
         with patch('src.nodes.parameter_extraction_node.LLMClient') as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(mock_llm_response)
-            mock_llm.client.chat.completions.create.return_value = mock_response
+            mock_llm = AsyncMock()
+            mock_llm.chat_completion = AsyncMock(return_value=json.dumps(mock_llm_response))
             mock_llm_class.return_value = mock_llm
             
             result_state = await parameter_extraction_node(main_state)

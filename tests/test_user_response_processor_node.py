@@ -58,10 +58,10 @@ def sample_clarification_state():
 @pytest.fixture
 def mock_llm_client():
     """Mock LLM client for testing."""
-    client = MagicMock()
-    client.model = "gpt-4-1106-preview"
-    client.temperature = 0.1
-    client.client = MagicMock()
+    client = AsyncMock()
+    client.model = "gpt-4"
+    client.temperature = 0.2
+    client.chat_completion = AsyncMock()
     return client
 
 
@@ -251,14 +251,12 @@ class TestUserResponseProcessor:
     async def test_parse_user_response_success(self, mock_llm_client):
         """Test successful user response parsing with LLM."""
         # Mock LLM response
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = """{
+        mock_llm_client.chat_completion.return_value = """{
             "slot_values": {"time_period": "2024-Q1"},
             "ambiguity_flags": {},
             "extraction_confidence": 0.95,
             "parsing_notes": "Successfully extracted quarter"
         }"""
-        mock_llm_client.client.chat.completions.create.return_value = mock_response
         
         processor = UserResponseProcessor(mock_llm_client)
         
@@ -279,9 +277,7 @@ class TestUserResponseProcessor:
     async def test_parse_user_response_json_error(self, mock_llm_client):
         """Test user response parsing with JSON decode error."""
         # Mock invalid JSON response
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = "Invalid JSON"
-        mock_llm_client.client.chat.completions.create.return_value = mock_response
+        mock_llm_client.chat_completion.return_value = "Invalid JSON"
         
         processor = UserResponseProcessor(mock_llm_client)
         
@@ -302,7 +298,7 @@ class TestUserResponseProcessor:
     async def test_parse_user_response_llm_error(self, mock_llm_client):
         """Test user response parsing with LLM call error."""
         # Mock LLM error
-        mock_llm_client.client.chat.completions.create.side_effect = Exception("API Error")
+        mock_llm_client.chat_completion.side_effect = Exception("API Error")
         
         processor = UserResponseProcessor(mock_llm_client)
         
