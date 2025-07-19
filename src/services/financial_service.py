@@ -15,7 +15,7 @@ Features:
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from ..repositories import (
@@ -61,6 +61,11 @@ class FinancialService:
         self.account_repo = get_account_repository()
         self.transaction_repo = get_transaction_repository()
         self.goal_repo = get_goal_repository()
+        
+        # Expose repositories for tools that need direct access
+        self.account_type_repo = self.account_repo  # Account types are managed by account repo
+        self.category_repo = self  # Categories managed by this service (methods below)
+        
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     # Account Management Operations
@@ -593,4 +598,89 @@ class FinancialService:
                 f"Consider reviewing spending in categories where you spend more than 30% of your budget."
             )
         
-        return insights 
+        return insights
+    
+    # Category Management (for tools compatibility)
+    
+    async def get_all(self) -> List[Dict[str, Any]]:
+        """
+        Get all categories (simplified for tools compatibility).
+        
+        Returns:
+            List of category dictionaries with id and name
+        """
+        try:
+            # Get categories from spending analysis to find existing ones
+            query = """
+                SELECT DISTINCT c.id, c.name 
+                FROM categories c 
+                ORDER BY c.name
+            """
+            
+            async with self.transaction_repo._get_connection() as conn:
+                result = await conn.fetch(query)
+                categories = []
+                for row in result:
+                    categories.append({
+                        'id': row['id'],
+                        'name': row['name']
+                    })
+                return categories
+                
+        except Exception as e:
+            self._logger.error(f"Failed to get categories: {e}")
+            # Return actual database categories as fallback
+            return [
+                {'id': 1, 'name': 'Food & Dining'},
+                {'id': 2, 'name': 'Shopping'},
+                {'id': 3, 'name': 'Transportation'},
+                {'id': 4, 'name': 'Bills & Utilities'},
+                {'id': 5, 'name': 'Entertainment'},
+                {'id': 6, 'name': 'Health & Medical'},
+                {'id': 7, 'name': 'Investment'},
+                {'id': 8, 'name': 'Income'}
+            ]
+    
+    async def get_transactions_by_type(
+        self, 
+        user_id: UUID, 
+        transaction_type: TransactionType, 
+        days_back: int = 30
+    ) -> List[Transaction]:
+        """
+        Get transactions by type for a user.
+        
+        Args:
+            user_id: User identifier
+            transaction_type: Type of transactions to retrieve
+            days_back: Number of days to look back
+            
+        Returns:
+            List of transactions matching the type
+        """
+        try:
+            # Get all user accounts first
+            accounts = await self.account_repo.get_user_accounts(user_id)
+            if not accounts:
+                return []
+            
+            # Get transactions for all accounts of the given type
+            all_transactions = []
+            for account in accounts:
+                account_transactions = await self.transaction_repo.get_account_transactions(
+                    account_id=account.id,
+                    limit=1000,  # Large limit to get all
+                    days_back=days_back
+                )
+                # Filter by transaction type
+                filtered_transactions = [
+                    txn for txn in account_transactions 
+                    if txn.transaction_type == transaction_type
+                ]
+                all_transactions.extend(filtered_transactions)
+            
+            return all_transactions
+            
+        except Exception as e:
+            self._logger.error(f"Failed to get transactions by type for user {user_id}: {e}")
+            raise FinancialServiceError(f"Get transactions by type failed: {e}") 

@@ -464,8 +464,8 @@ class TransactionFilters(BaseEntity):
     counterparty: Optional[str] = None
     limit: Optional[int] = Field(None, ge=1, le=10000)
     offset: Optional[int] = Field(None, ge=0)
-    order_by: Optional[str] = Field(None, regex=r'^(occurred_at|amount|created_at)$')
-    order_direction: Optional[str] = Field(None, regex=r'^(asc|desc)$')
+    order_by: Optional[str] = Field(None, pattern=r'^(occurred_at|amount|created_at)$')
+    order_direction: Optional[str] = Field(None, pattern=r'^(asc|desc)$')
 
 
 class AccountFilters(BaseEntity):
