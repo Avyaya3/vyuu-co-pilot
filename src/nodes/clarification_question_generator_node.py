@@ -280,13 +280,13 @@ Return only the question text, nothing else.
             return f"I need a bit more information: {slot_list}. Could you provide these details?"
 
 
-async def clarification_question_generator_node(state: ClarificationState) -> ClarificationResult:
+async def clarification_question_generator_node(state: ClarificationState) -> ClarificationState:
     """
-    Generate a clarification question and update the state.
+    Generate a clarification question and pause for user response.
     
     This node is part of the clarification subgraph flow:
     1. Entry State → Missing Parameter Analysis → Clarification Question Generator
-    2. Question to User → User Response Processor → Completeness Validator
+    2. Question to User → [PAUSE] → User Response Processor → Completeness Validator
     3. [Complete?] → Yes → Exit to Direct Orchestrator
     4. [Complete?] → No → Loop back to Missing Parameter Analysis
     5. Max Attempts → Exit with Partial Data
@@ -295,9 +295,7 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
         state: Current ClarificationState
         
     Returns:
-        Either:
-        - Tuple of (generated_question, updated_state) to continue clarification
-        - Tuple of ("EXIT_WITH_PARTIAL_DATA", updated_state) to exit subgraph
+        Updated ClarificationState with pause status and pending question
     """
     logger.info(f"[ClarificationQuestionGenerator] Starting for session {state.session_id[:8]}")
     
@@ -329,7 +327,7 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
         })
         
         logger.info(f"[ClarificationQuestionGenerator] Exiting clarification subgraph with partial data for session {state.session_id[:8]}")
-        return "EXIT_WITH_PARTIAL_DATA", exit_state
+        return exit_state
     
     try:
         generator = ClarificationQuestionGenerator()
@@ -341,9 +339,13 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
         targeted_slots = generator.select_next_slots(state)
         targeted_param = targeted_slots[0] if targeted_slots else "unknown"
         
-        # Update state for continued clarification
+        # Update state for pause and wait for user response
         updated_state = state.model_copy(update={
             "clarification_attempts": state.clarification_attempts + 1,
+            "pending_question": question,
+            "waiting_for_response": True,
+            "clarification_phase": "waiting",
+            "last_question_asked": question,
             "clarification_history": state.clarification_history + [{
                 "question": question,
                 "user_response": None,  # Will be filled by User Response Processor
@@ -353,14 +355,15 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
             }],
             "metadata": {
                 **state.metadata,
-                "clarification_status": "awaiting_user_response",
+                "clarification_status": "waiting_for_user_response",
                 "current_question": question,
-                "targeted_slots": targeted_slots
+                "targeted_slots": targeted_slots,
+                "pause_reason": "question_generated"
             }
         })
         
-        logger.info(f"[ClarificationQuestionGenerator] Generated question for session {state.session_id[:8]}: {question}")
-        return question, updated_state
+        logger.info(f"[ClarificationQuestionGenerator] Generated question and paused for session {state.session_id[:8]}: {question}")
+        return updated_state
         
     except Exception as e:
         logger.error(f"[ClarificationQuestionGenerator] Failed for session {state.session_id[:8]}: {e}")
@@ -369,6 +372,10 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
         fallback_question = "I need some additional information to help you. Could you provide more details?"
         updated_state = state.model_copy(update={
             "clarification_attempts": state.clarification_attempts + 1,
+            "pending_question": fallback_question,
+            "waiting_for_response": True,
+            "clarification_phase": "waiting",
+            "last_question_asked": fallback_question,
             "clarification_history": state.clarification_history + [{
                 "question": fallback_question,
                 "user_response": None,
@@ -379,8 +386,9 @@ async def clarification_question_generator_node(state: ClarificationState) -> Cl
             "metadata": {
                 **state.metadata,
                 "clarification_status": "error_fallback",
-                "error": f"Question generation failed: {str(e)}"
+                "error": f"Question generation failed: {str(e)}",
+                "pause_reason": "error_fallback"
             }
         })
         
-        return fallback_question, updated_state 
+        return updated_state 

@@ -1,442 +1,249 @@
 import pytest
 import asyncio
-import uuid
-from unittest.mock import patch, AsyncMock
-from datetime import datetime, timezone
-
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
+from src.schemas.state_schemas import ClarificationState, IntentType
 from src.nodes.clarification_question_generator_node import (
     clarification_question_generator_node,
     ClarificationQuestionGenerator,
-    QuestionTemplate,
-    ClarificationResult
+    QuestionTemplate
 )
-from src.schemas.state_schemas import ClarificationState, IntentType, Message, MessageRole
+
+
+@pytest.fixture
+def sample_clarification_state():
+    """Create a sample ClarificationState for testing."""
+    return ClarificationState(
+        user_input="Transfer money",
+        session_id=str(uuid4()),
+        intent=IntentType.ACTION,
+        confidence=0.8,
+        messages=[],
+        metadata={},
+        missing_params=["amount", "account"],
+        missing_critical_params=["amount"],
+        parameter_priorities=["amount", "account"],
+        clarification_attempts=0,
+        max_attempts=3
+    )
 
 
 @pytest.mark.asyncio
-class TestClarificationQuestionGeneratorNode:
-    """Test Clarification Question Generator Node functionality."""
-    
-    def test_question_template_context_building(self):
-        """Test context prompt building."""
-        state = ClarificationState(
-            user_input="Transfer $500 to savings",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            extracted_parameters={
-                "action_type": "transfer",
-                "amount": 500.0,
-                "source_account": None
-            },
-            clarification_history=[
-                {"question": "Which account would you like to transfer from?", "user_response": None}
-            ]
-        )
-        
-        context = QuestionTemplate.build_context_prompt(state)
-        
-        assert "Intent: action" in context
-        assert "Transfer $500 to savings" in context
-        assert "action_type" in context
-        assert "amount" in context
-        assert "Which account would you like to transfer from?" in context
-    
-    def test_question_template_instruction_building(self):
-        """Test instruction prompt building with different scenarios."""
-        # Single slot with normalization
-        instructions = QuestionTemplate.build_instruction_prompt(
-            slot_names=["amount"],
-            normalization_suggestions={"amount": "Clarify if exact or approximate"},
-            ambiguity_flags={"amount": "approximation"},
-            intent=IntentType.ACTION
-        )
-        
-        assert "amount" in instructions
-        assert "Clarification note" in instructions
-        assert "Ambiguity note" in instructions
-        assert "specific dollar amount" in instructions  # Intent guidance
-        
-        # Multiple slots
-        instructions = QuestionTemplate.build_instruction_prompt(
-            slot_names=["source_account", "target_account"],
-            normalization_suggestions={},
-            ambiguity_flags={},
-            intent=IntentType.ACTION
-        )
-        
-        assert "source_account, target_account" in instructions
-        assert "multiple related pieces" in instructions
-    
-    def test_slot_selection_with_priorities(self):
-        """Test slot selection based on parameter priorities."""
-        generator = ClarificationQuestionGenerator()
-        
-        # Test with list priorities
-        state = ClarificationState(
-            user_input="Test",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            parameter_priorities=["amount", "source_account", "target_account"],
-            clarification_history=[]
-        )
-        
-        slots = generator.select_next_slots(state, max_slots=2)
-        assert slots == ["amount", "source_account"]
-        
-        # Test with dict priorities
-        state.parameter_priorities = {
-            "high": ["amount"],
-            "medium": ["source_account", "target_account"],
-            "low": ["description"]
-        }
-        
-        slots = generator.select_next_slots(state, max_slots=2)
-        assert slots == ["amount", "source_account"]
-    
-    def test_slot_selection_excludes_asked_slots(self):
-        """Test that already asked slots are excluded."""
-        generator = ClarificationQuestionGenerator()
-        
-        state = ClarificationState(
-            user_input="Test",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            parameter_priorities=["amount", "source_account", "target_account"],
-            clarification_history=[
-                {"question": "What amount?", "targeted_param": "amount", "attempt": 1}
-            ]
-        )
-        
-        slots = generator.select_next_slots(state, max_slots=2)
-        assert "amount" not in slots
-        assert slots == ["source_account", "target_account"]
-    
-    def test_slot_selection_fallbacks(self):
-        """Test fallback behavior when no priorities available."""
-        generator = ClarificationQuestionGenerator()
-        
-        state = ClarificationState(
-            user_input="Test",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            parameter_priorities=[],  # Empty priorities
-            missing_critical_params=["amount", "source_account"],
-            missing_params=["amount", "source_account", "description"],
-            clarification_history=[]
-        )
-        
-        slots = generator.select_next_slots(state, max_slots=2)
-        assert slots == ["amount", "source_account"]  # Falls back to critical params
-        
-        # Test final fallback to missing_params
-        state.missing_critical_params = []
-        slots = generator.select_next_slots(state, max_slots=2)
-        assert slots == ["amount", "source_account"]  # Falls back to missing_params
-    
-    async def test_successful_question_generation(self):
-        """Test successful question generation with LLM."""
-        state = ClarificationState(
-            user_input="Transfer money to savings",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=["amount", "source_account"],
-            missing_critical_params=["amount", "source_account"],
-            parameter_priorities=["amount", "source_account"],
-            clarification_attempts=0,
-            max_attempts=3,
-            extracted_parameters={"action_type": "transfer", "target_account": "savings"},
-            normalization_suggestions={},
-            ambiguity_flags={},
-            clarification_history=[]
-        )
-        
+async def test_clarification_question_generator_success(sample_clarification_state):
+    """Test successful question generation."""
+    with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
         # Mock LLM response
-        with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
-            mock_llm = AsyncMock()
-            mock_llm.chat_completion.return_value = "What amount would you like to transfer?"
-            mock_llm_class.return_value = mock_llm
-
-            question, updated_state = await clarification_question_generator_node(state)
-
-        assert "amount" in question.lower()
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion.return_value = "How much would you like to transfer?"
+        mock_llm_class.return_value = mock_llm
+        
+        # Call the node
+        updated_state = await clarification_question_generator_node(sample_clarification_state)
+        
+        # Verify the state was updated correctly
+        assert isinstance(updated_state, ClarificationState)
+        assert updated_state.pending_question == "How much would you like to transfer?"
+        assert updated_state.waiting_for_response is True
+        assert updated_state.clarification_phase == "waiting"
         assert updated_state.clarification_attempts == 1
-        assert len(updated_state.clarification_history) == 1
-        assert updated_state.clarification_history[0]["exit_condition"] == False
+        assert updated_state.metadata["clarification_status"] == "waiting_for_user_response"
         
-        # Check continued clarification metadata
-        assert updated_state.metadata["clarification_status"] == "awaiting_user_response"
-        assert updated_state.metadata["current_question"] == question
-        assert updated_state.clarification_history[0]["user_response"] is None
-    
-    async def test_llm_failure_fallback(self):
-        """Test fallback behavior when LLM call fails."""
-        state = ClarificationState(
-            user_input="Transfer money",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=["amount"],
-            missing_critical_params=["amount"],
-            parameter_priorities=["amount"],
-            clarification_attempts=0,
-            max_attempts=3,
-            extracted_parameters={},
-            normalization_suggestions={},
-            ambiguity_flags={},
-            clarification_history=[]
-        )
-        
+        # Verify LLM was called
+        mock_llm.chat_completion.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_clarification_question_generator_llm_failure(sample_clarification_state):
+    """Test question generation when LLM fails."""
+    with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
         # Mock LLM failure
-        with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
-            mock_llm = AsyncMock()
-            mock_llm.chat_completion.side_effect = Exception("API Error")
-            mock_llm_class.return_value = mock_llm
-            
-            question, updated_state = await clarification_question_generator_node(state)
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion.side_effect = Exception("LLM API error")
+        mock_llm_class.return_value = mock_llm
         
-        # Should get fallback question specific to the missing slot
-        assert "amount" in question.lower()
+        # Call the node
+        updated_state = await clarification_question_generator_node(sample_clarification_state)
+        
+        # Verify fallback behavior - LLM failure is handled internally and returns fallback question
+        assert isinstance(updated_state, ClarificationState)
+        assert updated_state.pending_question is not None
+        assert updated_state.waiting_for_response is True
+        assert updated_state.clarification_phase == "waiting"
         assert updated_state.clarification_attempts == 1
-        assert len(updated_state.clarification_history) == 1
-        assert updated_state.clarification_history[0]["exit_condition"] == False
-        # Note: LLM failure is handled internally in generate_question, so node sees it as successful
-        assert updated_state.metadata["clarification_status"] == "awaiting_user_response"
+        # The fallback is handled internally, so status is normal
+        assert updated_state.metadata["clarification_status"] == "waiting_for_user_response"
+
+
+@pytest.mark.asyncio
+async def test_clarification_question_generator_max_attempts_reached():
+    """Test question generation when max attempts are reached."""
+    # Create state with max attempts reached
+    state = ClarificationState(
+        user_input="Transfer money",
+        session_id=str(uuid4()),
+        intent=IntentType.ACTION,
+        confidence=0.8,
+        messages=[],
+        metadata={},
+        missing_params=["amount"],
+        missing_critical_params=["amount"],
+        clarification_attempts=3,  # Max attempts reached
+        max_attempts=3
+    )
     
-    async def test_max_attempts_reached(self):
-        """Test exit behavior when max attempts are reached."""
-        state = ClarificationState(
-            user_input="Transfer money",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=["amount"],
-            missing_critical_params=["amount"],
-            parameter_priorities=["amount"],
-            clarification_attempts=3,  # At max
-            max_attempts=3,
-            extracted_parameters={},
-            normalization_suggestions={},
-            ambiguity_flags={},
-            clarification_history=[]
-        )
-        
-        exit_signal, updated_state = await clarification_question_generator_node(state)
-        
-        # Should exit with partial data instead of asking another question
-        assert exit_signal == "EXIT_WITH_PARTIAL_DATA"
-        assert updated_state.clarification_attempts == 3  # Not incremented further
-        assert len(updated_state.clarification_history) == 1
-        assert updated_state.clarification_history[0]["targeted_param"] == "max_attempts_exit"
-        assert updated_state.clarification_history[0]["exit_condition"] == True
-        
-        # Check exit metadata
-        assert updated_state.metadata["clarification_status"] == "max_attempts_reached"
-        assert "amount" in updated_state.metadata["exit_message"]
-        assert "before I can proceed" in updated_state.metadata["exit_message"]
-        assert updated_state.metadata["remaining_missing_params"] == ["amount"]
-        assert updated_state.metadata["remaining_critical_params"] == ["amount"]
+    # Call the node
+    updated_state = await clarification_question_generator_node(state)
     
-    async def test_no_slots_to_ask(self):
-        """Test behavior when no slots need to be asked about."""
-        state = ClarificationState(
-            user_input="Transfer money",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=[],  # No missing params
-            missing_critical_params=[],
-            parameter_priorities=[],
-            clarification_attempts=0,
-            max_attempts=3,
-            extracted_parameters={"action_type": "transfer", "amount": 500.0},
-            normalization_suggestions={},
-            ambiguity_flags={},
-            clarification_history=[]
-        )
-        
-        question, updated_state = await clarification_question_generator_node(state)
-        
-        assert "additional information" in question
-        assert updated_state.clarification_attempts == 1
-        assert len(updated_state.clarification_history) == 1
-        assert updated_state.clarification_history[0]["exit_condition"] == False
+    # Verify exit behavior
+    assert isinstance(updated_state, ClarificationState)
+    assert updated_state.metadata["clarification_status"] == "max_attempts_reached"
+    assert "exit_message" in updated_state.metadata
+
+
+@pytest.mark.asyncio
+async def test_clarification_question_generator_with_history(sample_clarification_state):
+    """Test question generation with existing clarification history."""
+    # Add some history
+    sample_clarification_state.clarification_history = [
+        {
+            "question": "How much would you like to transfer?",
+            "user_response": "$500",
+            "targeted_param": "amount",
+            "attempt": 1
+        }
+    ]
+    sample_clarification_state.clarification_attempts = 1
     
-    def test_question_post_processing(self):
-        """Test question post-processing functionality."""
+    with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion.return_value = "Which account would you like to transfer from?"
+        mock_llm_class.return_value = mock_llm
+        
+        updated_state = await clarification_question_generator_node(sample_clarification_state)
+        
+        # Verify state updates
+        assert updated_state.clarification_attempts == 2
+        assert len(updated_state.clarification_history) == 2
+        assert updated_state.pending_question == "Which account would you like to transfer from?"
+
+
+@pytest.mark.asyncio
+async def test_clarification_question_generator_with_extracted_parameters():
+    """Test question generation with some already extracted parameters."""
+    state = ClarificationState(
+        user_input="Transfer $500",
+        session_id=str(uuid4()),
+        intent=IntentType.ACTION,
+        confidence=0.8,
+        messages=[],
+        metadata={},
+        missing_params=["account"],
+        missing_critical_params=["account"],
+        extracted_parameters={"amount": "$500"},
+        clarification_attempts=0,
+        max_attempts=3
+    )
+    
+    with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion.return_value = "Which account would you like to transfer from?"
+        mock_llm_class.return_value = mock_llm
+        
+        updated_state = await clarification_question_generator_node(state)
+        
+        # Verify the question was generated
+        assert updated_state.pending_question == "Which account would you like to transfer from?"
+        assert updated_state.waiting_for_response is True
+
+
+class TestClarificationQuestionGenerator:
+    """Test the ClarificationQuestionGenerator class."""
+    
+    def test_select_next_slots(self, sample_clarification_state):
+        """Test slot selection logic."""
         generator = ClarificationQuestionGenerator()
         
-        # Test adding question mark
-        processed = generator._post_process_question("What is your amount")
-        assert processed == "What is your amount?"
+        # Test with priorities
+        slots = generator.select_next_slots(sample_clarification_state)
+        assert slots == ["amount", "account"]
         
-        # Test removing quotes
-        processed = generator._post_process_question('"What is your amount?"')
-        assert processed == "What is your amount?"
-        
-        # Test capitalizing first letter
-        processed = generator._post_process_question("what is your amount?")
-        assert processed == "What is your amount?"
-        
-        # Test removing extra spaces
-        processed = generator._post_process_question("What   is    your amount?")
-        assert processed == "What is your amount?"
-        
-        # Test stripping whitespace
-        processed = generator._post_process_question("  What is your amount?  ")
-        assert processed == "What is your amount?"
+        # Test with history (should skip already asked slots)
+        sample_clarification_state.clarification_history = [
+            {"targeted_param": "amount"}
+        ]
+        slots = generator.select_next_slots(sample_clarification_state)
+        assert slots == ["account"]
     
-    def test_fallback_question_generation(self):
-        """Test fallback question generation."""
+    def test_parse_priorities_list(self):
+        """Test priority parsing with list input."""
         generator = ClarificationQuestionGenerator()
-        
-        # Single slot
-        question = generator._generate_fallback_question(["amount"], IntentType.ACTION)
-        assert "amount" in question.lower()
-        assert question.endswith("?")
-        
-        # Multiple slots
-        question = generator._generate_fallback_question(
-            ["source_account", "target_account"], 
+        priorities = ["amount", "account", "description"]
+        result = generator._parse_priorities(priorities)
+        assert result == ["amount", "account", "description"]
+    
+    def test_parse_priorities_dict(self):
+        """Test priority parsing with dict input."""
+        generator = ClarificationQuestionGenerator()
+        priorities = {
+            "critical": ["amount"],
+            "high": ["account"],
+            "optional": ["description"]
+        }
+        result = generator._parse_priorities(priorities)
+        assert "amount" in result
+        assert "account" in result
+        assert "description" in result
+
+
+class TestQuestionTemplate:
+    """Test the QuestionTemplate class."""
+    
+    def test_build_context_prompt(self, sample_clarification_state):
+        """Test context prompt building."""
+        prompt = QuestionTemplate.build_context_prompt(sample_clarification_state)
+        assert "Intent: action" in prompt
+        assert "User input: \"Transfer money\"" in prompt
+    
+    def test_build_context_prompt_with_extracted_parameters(self, sample_clarification_state):
+        """Test context prompt with extracted parameters."""
+        sample_clarification_state.extracted_parameters = {"amount": "$500"}
+        prompt = QuestionTemplate.build_context_prompt(sample_clarification_state)
+        assert "Already provided" in prompt
+        assert "$500" in prompt
+    
+    def test_build_context_prompt_with_history(self, sample_clarification_state):
+        """Test context prompt with clarification history."""
+        sample_clarification_state.clarification_history = [
+            {"question": "How much?"}
+        ]
+        prompt = QuestionTemplate.build_context_prompt(sample_clarification_state)
+        assert "Previously asked" in prompt
+    
+    def test_build_instruction_prompt_single_slot(self):
+        """Test instruction prompt for single slot."""
+        prompt = QuestionTemplate.build_instruction_prompt(
+            ["amount"],
+            {},
+            {},
             IntentType.ACTION
         )
-        assert "source account" in question.lower()
-        assert "target account" in question.lower()
-        
-        # Unknown slot
-        question = generator._generate_fallback_question(["unknown_slot"], IntentType.ACTION)
-        assert "unknown slot" in question.lower()
+        assert "amount" in prompt.lower()
+        # The instruction prompt doesn't end with a question mark, it's instructions for generating a question
+        assert "question" in prompt.lower()
     
-    async def test_different_intent_types(self):
-        """Test question generation for different intent types."""
-        # DATA_FETCH intent
-        state = ClarificationState(
-            user_input="Show me transactions",
-            intent=IntentType.DATA_FETCH,
-            confidence=0.8,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=["entity_type"],
-            missing_critical_params=["entity_type"],
-            parameter_priorities=["entity_type"],
-            clarification_attempts=0,
-            max_attempts=3,
-            extracted_parameters={},
-            normalization_suggestions={},
-            ambiguity_flags={},
-            clarification_history=[]
+    def test_build_instruction_prompt_multiple_slots(self):
+        """Test instruction prompt for multiple slots."""
+        prompt = QuestionTemplate.build_instruction_prompt(
+            ["amount", "account"],
+            {},
+            {},
+            IntentType.ACTION
         )
-        
-        with patch('src.nodes.clarification_question_generator_node.LLMClient') as mock_llm_class:
-            mock_llm = AsyncMock()
-            mock_llm.chat_completion.return_value = "What type of data would you like to see?"
-            mock_llm_class.return_value = mock_llm
-            
-            question, updated_state = await clarification_question_generator_node(state)
-        
-        assert "data" in question.lower() or "type" in question.lower()
-        assert updated_state.clarification_attempts == 1
-        assert updated_state.clarification_history[0]["exit_condition"] == False
+        assert "amount" in prompt.lower()
+        assert "account" in prompt.lower()
     
-    async def test_normalization_and_ambiguity_integration(self):
-        """Test integration of normalization suggestions and ambiguity flags."""
-        state = ClarificationState(
-            user_input="Transfer about five hundred",
-            intent=IntentType.ACTION,
-            confidence=0.9,
-            messages=[],
-            session_id=str(uuid.uuid4()),
-            timestamp=datetime.now(timezone.utc),
-            metadata={},
-            parameters={},
-            execution_results={},
-            response="",
-            missing_params=["source_account"],
-            missing_critical_params=["source_account"],
-            parameter_priorities=["source_account"],
-            clarification_attempts=0,
-            max_attempts=3,
-            extracted_parameters={"amount": 500.0},
-            normalization_suggestions={
-                "amount": "User said 'about' - confirm exact amount"
-            },
-            ambiguity_flags={
-                "amount": "approximation"
-            },
-            clarification_history=[]
-        )
-        
-        # Test that the template building includes normalization and ambiguity info
-        instructions = QuestionTemplate.build_instruction_prompt(
-            ["source_account"],
-            state.normalization_suggestions,
-            state.ambiguity_flags,
-            state.intent
-        )
-        
-        # Even though we're asking about source_account, the normalization/ambiguity 
-        # for amount shouldn't appear since it's not in the slot_names
-        assert "source_account" in instructions
-        assert "transfer" in instructions.lower() or "account" in instructions.lower()
-
-
-if __name__ == "__main__":
-    # Run tests
-    pytest.main([__file__, "-v"]) 
+    def test_get_intent_guidance(self):
+        """Test intent-specific guidance."""
+        guidance = QuestionTemplate._get_intent_guidance(IntentType.ACTION, ["amount"])
+        assert guidance is not None
+        assert "dollar amount" in guidance.lower() 

@@ -15,7 +15,7 @@ Features:
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
@@ -211,6 +211,7 @@ class ClarificationState(MainState):
     - Ambiguity flagging
     - Clarification turn history
     - Automatic parameter merging
+    - Pause/resume mechanism for user interaction
     """
     
     missing_params: list[str] = Field(
@@ -250,6 +251,24 @@ class ClarificationState(MainState):
     extracted_parameters: dict[str, Any] = Field(
         default_factory=dict,
         description="Parameters extracted and normalized by the Missing‑Parameter Analysis node"
+    )
+    
+    # New fields for pause/resume mechanism
+    pending_question: Optional[str] = Field(
+        None,
+        description="Question waiting to be asked to user"
+    )
+    waiting_for_response: bool = Field(
+        False,
+        description="True if subgraph is paused waiting for user response"
+    )
+    clarification_phase: Literal["generating", "waiting", "processing"] = Field(
+        "generating",
+        description="Current phase of clarification flow"
+    )
+    last_question_asked: Optional[str] = Field(
+        None,
+        description="Last question asked to user for context"
     )
 
     @model_validator(mode='after')

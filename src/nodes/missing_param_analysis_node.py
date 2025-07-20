@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from src.utils.parameter_config import get_parameter_config
 from src.schemas.state_schemas import ClarificationState, IntentType
 from src.schemas.generated_intent_schemas import (
@@ -43,6 +43,61 @@ def get_pydantic_model_for_intent(intent: IntentType) -> Optional[type]:
         return None
     
     return GENERATED_INTENT_PARAM_MODELS.get(intent_category)
+
+def normalize_parameter_priorities(parameter_priorities: Any) -> List[str]:
+    """
+    Normalize parameter_priorities to ensure it's always a list of strings.
+    
+    Args:
+        parameter_priorities: Raw parameter_priorities from LLM (could be dict, list, or other)
+        
+    Returns:
+        Normalized list of parameter names as strings
+    """
+    if isinstance(parameter_priorities, list):
+        # Already a list, convert all items to strings and filter out empty/None
+        return [str(item) for item in parameter_priorities if item is not None and str(item).strip()]
+    
+    elif isinstance(parameter_priorities, dict):
+        # Convert dict to list - use keys as parameter names
+        # Sort by priority if values are numeric, otherwise use insertion order
+        try:
+            # Try to sort by numeric priority values
+            sorted_items = sorted(parameter_priorities.items(), 
+                                key=lambda x: float(x[1]) if isinstance(x[1], (int, float)) else 0,
+                                reverse=True)
+            return [str(key) for key, _ in sorted_items if key is not None and str(key).strip()]
+        except (ValueError, TypeError):
+            # Fallback to keys in insertion order
+            return [str(key) for key in parameter_priorities.keys() if key is not None and str(key).strip()]
+    
+    elif isinstance(parameter_priorities, str):
+        # Single string, treat as single-item list if not empty
+        return [parameter_priorities] if parameter_priorities.strip() else []
+    
+    else:
+        # Unknown type, return empty list
+        logger.warning(f"Unknown parameter_priorities type: {type(parameter_priorities)}, value: {parameter_priorities}")
+        return []
+
+
+def normalize_missing_params(missing_params: Any) -> List[str]:
+    """
+    Normalize missing_params to ensure it's always a list of strings.
+    
+    Args:
+        missing_params: Raw missing_params from LLM
+        
+    Returns:
+        Normalized list of parameter names as strings
+    """
+    if isinstance(missing_params, list):
+        return [str(item) for item in missing_params if item is not None and str(item).strip()]
+    elif isinstance(missing_params, str):
+        return [missing_params] if missing_params.strip() else []
+    else:
+        logger.warning(f"Unknown missing_params type: {type(missing_params)}, value: {missing_params}")
+        return []
 
 def render_schema(intent: str, schemas: dict) -> str:
     """
@@ -99,7 +154,8 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
     schemas = param_config._config_data.get("intent_parameters", {})
     intent = state.intent.value if hasattr(state.intent, "value") else str(state.intent)
     schema_text = render_schema(intent, schemas)
-    # Compose prompt
+    
+    # Compose prompt with explicit format instructions
     prompt = f"""
         You are a slot-filling assistant. Here is the schema for "{intent}":
         {schema_text}
@@ -110,19 +166,29 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
         Missing critical slots: {json.dumps(state.missing_critical_params, ensure_ascii=False)}
         Clarification history: {json.dumps(state.clarification_history, ensure_ascii=False)}
 
-        Please return JSON with:
-        - extracted_parameters: all slots, value or null
-        - missing_params & missing_critical_params
-        - parameter_priorities
-        - normalization_suggestions
-        - ambiguity_flags (map of slot_name to reason, only for genuinely ambiguous slots)
+        Please return JSON with the following EXACT structure:
+        {{
+            "extracted_parameters": {{"slot_name": "value" or null}},
+            "missing_params": ["slot_name1", "slot_name2"],
+            "missing_critical_params": ["critical_slot_name"],
+            "parameter_priorities": ["slot_name1", "slot_name2"],
+            "normalization_suggestions": {{"user_term": "canonical_value"}},
+            "ambiguity_flags": {{"slot_name": "reason"}}
+        }}
+
+        IMPORTANT: 
+        - parameter_priorities must be a LIST of strings, not a dictionary
+        - missing_params must be a LIST of strings
+        - missing_critical_params must be a LIST of strings
+        - Order parameter_priorities by importance (most important first)
     """
+    
     llm_client = LLMClient()
     try:
         # Use simplified LLM client
         response_text = await llm_client.chat_completion(
             messages=[
-                {"role": "system", "content": "You are a careful slot-filling assistant for a financial assistant app. Always return valid JSON."},
+                {"role": "system", "content": "You are a careful slot-filling assistant for a financial assistant app. Always return valid JSON with the exact structure requested."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,  # Low temperature for consistent analysis
@@ -158,6 +224,7 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
     validated_params = {}
     normalization_suggestions = llm_json.get("normalization_suggestions", {})
     ambiguity_flags = llm_json.get("ambiguity_flags", {})
+    
     for slot in slot_names:
         value = llm_json.get("extracted_parameters", {}).get(slot, None)
         # Type check using Pydantic if possible
@@ -173,14 +240,25 @@ async def missing_param_analysis_node(state: ClarificationState) -> Clarificatio
                 ambiguity_flags[slot] = f"Validation error: {e}"
         else:
             validated_params[slot] = value
+    
+    # Normalize all list fields to ensure consistent format
+    normalized_missing_params = normalize_missing_params(llm_json.get("missing_params", []))
+    normalized_missing_critical_params = normalize_missing_params(llm_json.get("missing_critical_params", []))
+    normalized_parameter_priorities = normalize_parameter_priorities(llm_json.get("parameter_priorities", []))
+    
+    # Log normalization results for debugging
+    logger.info(f"[MissingParamAnalysis] Normalized parameter_priorities: {normalized_parameter_priorities}")
+    logger.info(f"[MissingParamAnalysis] Normalized missing_params: {normalized_missing_params}")
+    
     # Compose updated state
     updated_state = state.model_copy(update={
         "extracted_parameters": validated_params,
-        "missing_params": llm_json.get("missing_params", []),
-        "missing_critical_params": llm_json.get("missing_critical_params", []),
-        "parameter_priorities": llm_json.get("parameter_priorities", []),
+        "missing_params": normalized_missing_params,
+        "missing_critical_params": normalized_missing_critical_params,
+        "parameter_priorities": normalized_parameter_priorities,
         "normalization_suggestions": normalization_suggestions,
         "ambiguity_flags": ambiguity_flags,
     })
+    
     logger.info(f"[MissingParamAnalysis] Completed for session {state.session_id[:8]}")
     return updated_state 
