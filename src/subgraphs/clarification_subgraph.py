@@ -7,7 +7,7 @@ decision router determines that additional information is needed from the user.
 Flow:
 1. Entry State (MainState) → Clarification Entry Wrapper → Missing Parameter Analysis
 2. Missing Parameter Analysis → Clarification Question Generator → [PAUSE & RETURN]
-3. User Response → Clarification Resume Node → User Response Processor → Completeness Validator
+3. User Response → User Response Processor → Completeness Validator
 4. Completeness Validator:
    - "complete" → Exit to Direct Orchestrator (via wrapper)
    - "incomplete" → Loop back to Missing Parameter Analysis (if attempts < max)
@@ -35,7 +35,6 @@ from src.schemas.state_schemas import (
 )
 from src.nodes.missing_param_analysis_node import missing_param_analysis_node
 from src.nodes.clarification_question_generator_node import clarification_question_generator_node
-from src.nodes.clarification_resume_node import clarification_resume_node
 from src.nodes.user_response_processor_node import user_response_processor_node
 from src.nodes.completeness_validator_node import completeness_validator_node
 from src.nodes.exit_with_partial_data_node import exit_with_partial_data_node
@@ -256,6 +255,12 @@ def get_clarification_routing_decision(state: ClarificationState) -> Clarificati
             logger.info(f"[ClarificationRouting] Resuming processing for session {state.session_id[:8]}")
             return "resume_processing"
         
+        # Check if missing_param_analysis found no missing parameters
+        # This handles the case where user response completed all required parameters
+        if not state.missing_params and not state.missing_critical_params:
+            logger.info(f"[ClarificationRouting] No missing parameters found - checking completeness for session {state.session_id[:8]}")
+            return "exit_to_orchestrator"  # Route to completeness_validator to confirm completion
+        
         # Check for explicit exit signals
         clarification_status = state.metadata.get("clarification_status")
         
@@ -301,7 +306,6 @@ def create_clarification_subgraph() -> StateGraph:
     graph.add_node("clarification_entry", clarification_entry_wrapper)
     graph.add_node("missing_param_analysis", missing_param_analysis_node)
     graph.add_node("clarification_question_generator", clarification_question_generator_node)
-    graph.add_node("clarification_resume", clarification_resume_node)
     graph.add_node("user_response_processor", user_response_processor_node)
     graph.add_node("completeness_validator", completeness_validator_node)
     graph.add_node("clarification_exit", clarification_exit_wrapper)
@@ -312,8 +316,16 @@ def create_clarification_subgraph() -> StateGraph:
     graph.add_edge(START, "clarification_entry")
     graph.add_edge("clarification_entry", "missing_param_analysis")
     
-    # Main clarification loop with pause/resume
-    graph.add_edge("missing_param_analysis", "clarification_question_generator")
+    # Main clarification loop with pause/resume - conditional routing based on missing params
+    graph.add_conditional_edges(
+        "missing_param_analysis",
+        get_clarification_routing_decision,
+        {
+            "continue_clarification": "clarification_question_generator",  # Has missing params
+            "exit_to_orchestrator": "completeness_validator",              # Check if complete
+            "exit_with_partial_data": "exit_with_partial_data"             # Error case
+        }
+    )
     
     # Conditional routing from question generator
     graph.add_conditional_edges(
@@ -326,9 +338,6 @@ def create_clarification_subgraph() -> StateGraph:
             "exit_with_partial_data": "exit_with_partial_data"
         }
     )
-    
-    # Resume flow (when user responds)
-    graph.add_edge("clarification_resume", "user_response_processor")
     
     # Continue flow from user response processor
     graph.add_edge("user_response_processor", "completeness_validator")
