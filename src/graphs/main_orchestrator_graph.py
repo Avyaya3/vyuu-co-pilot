@@ -236,8 +236,10 @@ def create_main_orchestrator_graph() -> StateGraph:
         }
     )
     
-    # Both subgraphs route to final response formatter
-    graph.add_edge("clarification_subgraph", "final_response_formatter")
+    # Clarification subgraph routes to direct orchestrator subgraph
+    graph.add_edge("clarification_subgraph", "direct_orchestrator_subgraph")
+    
+    # Direct orchestrator subgraph routes to final response formatter
     graph.add_edge("direct_orchestrator_subgraph", "final_response_formatter")
     
     # Final edge to END
