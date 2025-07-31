@@ -1,0 +1,67 @@
+{
+  "name": "vyuu-copilot-v2",
+  "description": "LangGraph-based intent orchestration system for financial assistance",
+  "version": "0.1.0",
+  "python_version": "3.11",
+  "dependencies": [
+    "langgraph>=0.1.0",
+    "langchain>=0.1.0",
+    "supabase>=2.0.0",
+    "pydantic>=2.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "pytest>=7.0.0",
+    "python-dotenv>=1.0.0",
+    "asyncpg>=0.28.0",
+    "tenacity>=8.0.0",
+    "pyjwt>=2.8.0",
+    "gotrue>=1.0.0",
+    "openai>=1.0.0",
+    "pyyaml>=6.0.0"
+  ],
+  "graphs": {
+    "main_orchestrator": "src.graphs.main_orchestrator_graph:main_orchestrator_graph"
+  },
+  "environment": {
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key for LLM operations",
+      "required": true
+    },
+    "SUPABASE_URL": {
+      "description": "Supabase project URL",
+      "required": true
+    },
+    "SUPABASE_KEY": {
+      "description": "Supabase anonymous key",
+      "required": true
+    },
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "description": "Supabase service role key for admin operations",
+      "required": true
+    },
+    "DATABASE_URL": {
+      "description": "Direct PostgreSQL connection URL",
+      "required": true
+    },
+    "LOG_LEVEL": {
+      "description": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+      "default": "INFO",
+      "required": false
+    },
+    "STUDIO_TEST_USER_ID": {
+      "description": "Test user ID for LangGraph Studio (UUID format)",
+      "required": true
+    }
+  },
+  "dev_dependencies": [
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0"
+  ],
+  "entrypoint": "main.py",
+  "checkpoint": {
+    "type": "memory"
+  }
+} 

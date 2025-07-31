@@ -17,6 +17,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
+import asyncpg
 
 from ..repositories.base_repository import BaseRepository, DatabaseOperationError, EntityNotFoundError
 from ..schemas.database_models import User, UserCreate, UserUpdate
@@ -35,6 +36,39 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate, UUID]):
     def __init__(self):
         """Initialize the user repository."""
         super().__init__(User, "users")
+    
+    def _row_to_model(self, row: Optional[asyncpg.Record]) -> Optional[User]:
+        """
+        Convert a database row to a User model with JSON field handling.
+        
+        Args:
+            row: Database row record
+            
+        Returns:
+            User model instance or None
+            
+        Raises:
+            EntityValidationError: If model validation fails
+        """
+        if not row:
+            return None
+        
+        try:
+            # Convert row to dict
+            row_dict = dict(row)
+            
+            # Handle JSON fields that might be stored as strings
+            if 'settings' in row_dict and isinstance(row_dict['settings'], str):
+                import json
+                try:
+                    row_dict['settings'] = json.loads(row_dict['settings'])
+                except json.JSONDecodeError:
+                    row_dict['settings'] = {}
+            
+            return self.model_class.model_validate(row_dict)
+        except Exception as e:
+            self._logger.error(f"Model validation failed: {e}")
+            raise EntityValidationError(f"Failed to create {self.model_class.__name__}: {e}")
     
     async def create(self, user_data: UserCreate) -> User:
         """
