@@ -568,6 +568,11 @@ async def parameter_extraction_node(state: MainState) -> OrchestratorState:
         # Normalize parameters
         normalized_parameters = extractor.normalize_parameters(raw_parameters, pydantic_model)
         
+        # Always include user_id from the state if it's not already present
+        if 'user_id' in pydantic_model.model_fields and 'user_id' not in normalized_parameters:
+            normalized_parameters['user_id'] = orchestrator_state.user_id
+            logger.info(f"Added user_id from state: {orchestrator_state.user_id[:8]}...")
+        
         # Validate parameters
         is_valid, validation_errors = extractor.validate_parameters(normalized_parameters, pydantic_model)
         
