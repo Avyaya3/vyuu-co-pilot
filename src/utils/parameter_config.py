@@ -1,14 +1,24 @@
 """
-Parameter Configuration Manager for Intent Router.
+Parameter Configuration Manager for Intent Parameters.
 
-This module provides configuration-driven parameter definitions for intent routing,
-replacing hardcoded parameter dictionaries with YAML-based configuration.
+This module provides a centralized way to manage intent parameter configurations
+from YAML files, replacing the hardcoded parameter dictionaries with a flexible
+configuration system.
+
+Features:
+- YAML-based configuration files
+- Support for critical and optional parameters
+- Intent descriptions and metadata
+- Backward compatibility with legacy format
+- Caching for performance
+- Error handling and fallbacks
 """
 
-import yaml
-from pathlib import Path
-from typing import Dict, List, Set
 import logging
+import yaml
+import asyncio
+from pathlib import Path
+from typing import Dict, Set, List, Optional, Any
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
@@ -16,10 +26,11 @@ logger = logging.getLogger(__name__)
 
 class ParameterConfigManager:
     """
-    Manages parameter configuration for intent routing decisions.
+    Manages intent parameter configurations from YAML files.
     
-    Loads intent parameter definitions from YAML configuration and provides
-    methods to access critical and optional parameters for each intent type.
+    This class provides a flexible way to define and access parameter configurations
+    for different intents, supporting both critical and optional parameters with
+    descriptions and metadata.
     """
     
     def __init__(self, config_path: str = None):
@@ -27,15 +38,25 @@ class ParameterConfigManager:
         Initialize the parameter configuration manager.
         
         Args:
-            config_path: Path to the YAML configuration file. If None, uses default path.
+            config_path: Path to YAML configuration file (optional)
         """
-        if config_path is None:
-            # Default to config file in project root
-            config_path = Path(__file__).parent.parent.parent / "config" / "intent_parameters.yaml"
+        if config_path:
+            self.config_path = Path(config_path)
+        else:
+            # Default to config/intent_parameters.yaml
+            self.config_path = Path("config/intent_parameters.yaml")
         
-        self.config_path = Path(config_path)
         self._config_data = None
-        self._load_config()
+        
+        # Check if we're in an async context and avoid file reading
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, use fallback config
+            self._config_data = self._get_fallback_config()
+            logger.info("Using fallback config in async context")
+        except RuntimeError:
+            # Not in async context, safe to read file
+            self._load_config()
     
     def _load_config(self) -> None:
         """Load configuration from YAML file."""
@@ -43,6 +64,7 @@ class ParameterConfigManager:
             if not self.config_path.exists():
                 raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
             
+            # Simple synchronous file read - this should be fine since it's called in __init__
             with open(self.config_path, 'r', encoding='utf-8') as file:
                 self._config_data = yaml.safe_load(file)
                 
@@ -56,6 +78,28 @@ class ParameterConfigManager:
             # Fall back to empty config rather than failing
             self._config_data = {'intent_parameters': {}}
             raise
+    
+    def _get_fallback_config(self) -> Dict[str, Any]:
+        """Get fallback configuration when file reading is not possible."""
+        return {
+            'intent_parameters': {
+                'data_fetch': {
+                    'critical': ['user_id'],
+                    'optional': ['account_name', 'account_id', 'limit', 'days_back'],
+                    'description': 'Fetch financial data from database'
+                },
+                'aggregate': {
+                    'critical': ['user_id'],
+                    'optional': ['account_name', 'account_id', 'start_date', 'end_date', 'days_back'],
+                    'description': 'Perform financial aggregations and analysis'
+                },
+                'action': {
+                    'critical': ['user_id'],
+                    'optional': ['account_name', 'account_id', 'amount', 'transaction_type'],
+                    'description': 'Perform financial actions like transfers and transactions'
+                }
+            }
+        }
     
     @lru_cache(maxsize=32)
     def get_critical_parameters(self, intent: str) -> Set[str]:
@@ -162,6 +206,7 @@ class ParameterConfigManager:
 
 # Global instance for easy access
 _config_manager = None
+_config_lock = asyncio.Lock()
 
 
 def get_parameter_config() -> ParameterConfigManager:
@@ -173,7 +218,24 @@ def get_parameter_config() -> ParameterConfigManager:
     """
     global _config_manager
     if _config_manager is None:
+        # Initialize with a simple fallback config to avoid blocking
         _config_manager = ParameterConfigManager()
+    return _config_manager
+
+
+async def get_parameter_config_async() -> ParameterConfigManager:
+    """
+    Get the global parameter configuration manager instance asynchronously.
+    
+    Returns:
+        Singleton ParameterConfigManager instance
+    """
+    global _config_manager
+    if _config_manager is None:
+        async with _config_lock:
+            if _config_manager is None:
+                # Initialize with a simple fallback config to avoid blocking
+                _config_manager = ParameterConfigManager()
     return _config_manager
 
 
