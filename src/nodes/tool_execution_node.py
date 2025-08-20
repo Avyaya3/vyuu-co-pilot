@@ -385,12 +385,18 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         # Debug logging for user_id enforcement
         logger.info(f"Tool execution debug - extracted_params user_id: {base_extracted_params.get('user_id')}")
         logger.info(f"Tool execution debug - state metadata user_id: {real_user_id}")
+        logger.info(f"Tool execution debug - state metadata keys: {list((state.metadata or {}).keys())}")
+        logger.info(f"Tool execution debug - state session_id: {getattr(state, 'session_id', 'NOT_FOUND')}")
         
         if real_user_id:
             base_extracted_params["user_id"] = real_user_id
             logger.info(f"Tool execution debug - enforced user_id: {real_user_id}")
         else:
             logger.warning("Tool execution debug - no real user_id found in state metadata!")
+            # Fallback to hardcoded test user for Studio
+            fallback_user_id = "0575867a-743a-4f26-99b3-95b87d116d7b"
+            base_extracted_params["user_id"] = fallback_user_id
+            logger.warning(f"Tool execution debug - using fallback user_id: {fallback_user_id}")
         
         # Execute steps with safe parameters
         if execution_strategy == "transaction":

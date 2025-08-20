@@ -96,9 +96,11 @@ async def orchestrator_entry_wrapper(state: MainState) -> OrchestratorState:
             state = reconstruct_state_from_dict(state, MainState)
         
         logger.info(f"[DirectOrchestrator] Entry wrapper for session {state.session_id[:8]}")
+        logger.info(f"[DirectOrchestrator] Entry state user_id: {state.metadata.get('user_id', 'NOT_FOUND')}")
         
         # Convert MainState to OrchestratorState
         orchestrator_state = StateTransitions.to_orchestrator_state(state)
+        logger.info(f"[DirectOrchestrator] Post-conversion user_id: {orchestrator_state.metadata.get('user_id', 'NOT_FOUND')}")
         
         # Add system message for tracking
         orchestrator_state = MessageManager.add_system_message(
