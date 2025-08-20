@@ -110,15 +110,23 @@ class SupabaseClient:
     async def _create_postgres_pool(self) -> None:
         """Create the PostgreSQL connection pool."""
         try:
-            import ssl as ssl_module
+            # Modify database URL to disable SSL for Studio environment
+            db_url = self.config.database.url
             
-            # Configure SSL context for Supabase (disable certificate verification)
-            ssl_context = ssl_module.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl_module.CERT_NONE
+            # If URL contains SSL parameters, remove them
+            if '?sslmode=' in db_url:
+                db_url = db_url.split('?')[0]
+            
+            # Add sslmode=disable to force non-SSL connection
+            if '?' in db_url:
+                db_url += '&sslmode=disable'
+            else:
+                db_url += '?sslmode=disable'
+            
+            logger.info(f"Using database URL with SSL disabled: {db_url.split('@')[1] if '@' in db_url else '***'}")
             
             self._pg_pool = await asyncpg.create_pool(
-                self.config.database.url,
+                db_url,
                 min_size=self.config.database.pool_size // 2,
                 max_size=self.config.database.pool_size,
                 max_queries=50000,
@@ -126,7 +134,6 @@ class SupabaseClient:
                 timeout=self.config.database.pool_timeout,
                 command_timeout=60,
                 statement_cache_size=0,  # Disable prepared statements for Supavisor compatibility
-                ssl=ssl_context,  # Use custom SSL context
                 server_settings={
                     'application_name': 'vyuu_copilot_v2'
                 }
