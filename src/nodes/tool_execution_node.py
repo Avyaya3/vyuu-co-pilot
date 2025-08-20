@@ -118,8 +118,18 @@ async def _execute_single_step(
         result.end_execution(False, error=f"Tool lookup failed: {str(e)}")
         return result
     
-    # Merge parameters (step params take precedence over extracted params)
-    merged_params = {**extracted_params, **step_params}
+    # Merge parameters with safeguards: never allow step params to override critical fields
+    # Start with extracted parameters (validated from earlier nodes)
+    merged_params = {**extracted_params}
+    # Apply step params for non-critical fields only
+    for key, value in (step_params or {}).items():
+        if key == "user_id":
+            # Protect user_id from being overridden by LLM placeholders (e.g., "extracted_from_context")
+            # Prefer the extracted user_id if available; otherwise accept provided value
+            if "user_id" not in merged_params or not merged_params["user_id"]:
+                merged_params["user_id"] = value
+        else:
+            merged_params[key] = value
     
     # Validate parameters against tool schema
     try:
@@ -368,11 +378,17 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         execution_strategy = _determine_execution_strategy(steps)
         logger.info(f"Using execution strategy: {execution_strategy}")
         
-        # Execute steps
+        # Prepare base extracted params and enforce real user_id from state metadata
+        base_extracted_params = dict(state.extracted_params or {})
+        real_user_id = (state.metadata or {}).get("user_id")
+        if real_user_id:
+            base_extracted_params["user_id"] = real_user_id
+        
+        # Execute steps with safe parameters
         if execution_strategy == "transaction":
-            results, errors = await _execute_with_transaction(steps, state.extracted_params)
+            results, errors = await _execute_with_transaction(steps, base_extracted_params)
         else:
-            results, errors = await _execute_without_transaction(steps, state.extracted_params)
+            results, errors = await _execute_without_transaction(steps, base_extracted_params)
         
         # Calculate execution statistics
         total_execution_time = (time.time() - execution_start) * 1000

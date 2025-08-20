@@ -192,7 +192,14 @@ class MainOrchestrator:
             
             # Process through main graph
             logger.info(f"[MainOrchestrator] Executing main graph for session {state.session_id[:8]}")
-            final_state = await self.graph.ainvoke(state)
+            raw_result = await self.graph.ainvoke(state)
+            
+            # Convert result to proper MainState if it's an AddableValuesDict
+            if hasattr(raw_result, 'get') and not hasattr(raw_result, 'session_id'):
+                # LangGraph returned AddableValuesDict, convert to MainState
+                final_state = MainState(**dict(raw_result))
+            else:
+                final_state = raw_result
             
             # Save session state
             save_success = self.session_manager.save_session_state(final_state)
