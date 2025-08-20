@@ -160,7 +160,7 @@ class DbQueryTool:
             # Find account by name
             accounts = await self.financial_service.account_repo.get_user_accounts(params.user_id)
             account = next(
-                (acc for acc in accounts if acc.account_name.lower() == params.account_name.lower()),
+                (acc for acc in accounts if acc.name.lower() == params.account_name.lower()),
                 None
             )
             if not account:
@@ -176,10 +176,10 @@ class DbQueryTool:
         
         return {
             "account_id": account.id,
-            "account_name": account.account_name,
-            "balance": float(account.balance),
+            "account_name": account.name,
+            "balance": float(account.current_balance),
             "currency": "USD",
-            "last_updated": account.updated_at.isoformat() if account.updated_at else None
+            "last_updated": account.created_at.isoformat() if account.created_at else None
         }
     
     async def _get_transaction_history(self, params: DbQueryParams) -> Dict[str, Any]:
@@ -191,7 +191,7 @@ class DbQueryTool:
         if params.account_name:
             accounts = await self.financial_service.account_repo.get_user_accounts(params.user_id)
             account = next(
-                (acc for acc in accounts if acc.account_name.lower() == params.account_name.lower()),
+                (acc for acc in accounts if acc.name.lower() == params.account_name.lower()),
                 None
             )
             if not account:
@@ -216,7 +216,7 @@ class DbQueryTool:
         
         return {
             "account_id": account_id,
-            "account_name": account.account_name,
+            "account_name": account.name,
             "transaction_count": len(transactions),
             "transactions": [
                 {
@@ -245,9 +245,9 @@ class DbQueryTool:
             "accounts": [
                 {
                     "id": acc.id,
-                    "name": acc.account_name,
-                    "type": acc.account_type.type_name if acc.account_type else "Unknown",
-                    "balance": float(acc.balance),
+                    "name": acc.name,
+                    "type": "Unknown",  # TODO: Join with account_types table
+                    "balance": float(acc.current_balance),
                     "created": acc.created_at.isoformat() if acc.created_at else None
                 }
                 for acc in accounts
@@ -265,15 +265,15 @@ class DbQueryTool:
         if params.account_name:
             accounts = await self.financial_service.account_repo.get_user_accounts(params.user_id)
             account = next(
-                (acc for acc in accounts if acc.account_name.lower() == params.account_name.lower()),
+                (acc for acc in accounts if acc.name.lower() == params.account_name.lower()),
                 None
             )
             if account:
                 exists = True
                 account_info = {
                     "id": account.id,
-                    "name": account.account_name,
-                    "type": account.account_type.type_name if account.account_type else "Unknown"
+                    "name": account.name,
+                    "type": "Unknown"  # TODO: Join with account_types table
                 }
         
         elif params.account_id:
@@ -283,8 +283,8 @@ class DbQueryTool:
                     exists = True
                     account_info = {
                         "id": account.id,
-                        "name": account.account_name,
-                        "type": account.account_type.type_name if account.account_type else "Unknown"
+                        "name": account.name,
+                        "type": "Unknown"  # TODO: Join with account_types table
                     }
             except Exception:
                 exists = False
@@ -307,7 +307,7 @@ class DbQueryTool:
         if params.account_name:
             accounts = await self.financial_service.account_repo.get_user_accounts(params.user_id)
             account = next(
-                (acc for acc in accounts if acc.account_name.lower() == params.account_name.lower()),
+                (acc for acc in accounts if acc.name.lower() == params.account_name.lower()),
                 None
             )
             if not account:
@@ -323,11 +323,10 @@ class DbQueryTool:
         
         return {
             "id": account.id,
-            "name": account.account_name,
-            "type": account.account_type.type_name if account.account_type else "Unknown",
-            "balance": float(account.balance),
+            "name": account.name,
+            "type": "Unknown",  # TODO: Join with account_types table
+            "balance": float(account.current_balance),
             "user_id": account.user_id,
             "created_at": account.created_at.isoformat() if account.created_at else None,
-            "updated_at": account.updated_at.isoformat() if account.updated_at else None,
             "is_active": True  # Assuming all accounts are active for now
         } 
