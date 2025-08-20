@@ -281,17 +281,21 @@ class DecisionRouter:
         
         # Find missing parameters
         provided_params = set(parameters.keys())
+        missing_params = set(expected_all) - provided_params
+        missing_critical = set(expected_critical) - provided_params
         
-        # Special handling for user_id - consider it always available from state
-        if 'user_id' in expected_all and 'user_id' not in provided_params and state.user_id:
-            provided_params.add('user_id')
-            logger.info(f"Considering user_id as available from state: {state.user_id[:8]}...")
-        
-        missing_params = [p for p in expected_all if p not in provided_params]
-        critical_missing = [p for p in expected_critical if p not in provided_params]
+        # Special handling for user_id - if it's expected but not provided, check if it's in state metadata
+        if 'user_id' in missing_critical and 'user_id' in expected_critical:
+            user_id_from_state = state.metadata.get("user_id")
+            if user_id_from_state:
+                # Consider user_id as provided if it exists in state metadata
+                provided_params.add('user_id')
+                missing_params.discard('user_id')
+                missing_critical.discard('user_id')
+                logger.info(f"Using user_id from state metadata: {user_id_from_state[:8]}...")
         
         # Determine completeness - be more permissive
-        has_critical = len(critical_missing) == 0
+        has_critical = len(missing_critical) == 0
         within_missing_limit = len(missing_params) <= self.config.max_missing_params
         
         # Parameters are considered complete if:
@@ -305,8 +309,8 @@ class DecisionRouter:
         
         return {
             "complete": complete,
-            "missing": missing_params,
-            "critical_missing": critical_missing,
+            "missing": list(missing_params),
+            "critical_missing": list(missing_critical),
             "has_critical": has_critical,
             "within_missing_limit": within_missing_limit,
             "provided_count": len(provided_params),
