@@ -194,7 +194,7 @@ IMPORTANT RULES:
 1. Return ONLY a JSON array of steps, no other text
 2. Each step must have: tool_name, operation, params
 3. Use exact tool names and operations from the list above
-4. Include user_id in params for all operations
+4. Do NOT include user_id in params - it's automatically injected from session context
 5. Use normalized parameter names (they're already provided correctly)
 6. For single operations, return an array with one step
 
@@ -204,7 +204,6 @@ Example response format:
     "tool_name": "db_query",
     "operation": "get_account_balance", 
     "params": {{
-    "user_id": "extracted_from_context",
     "account_name": "checking"
     }}
 }}
@@ -350,9 +349,8 @@ def _merge_parameters(raw_params: Dict[str, Any], extracted_params: Dict[str, An
         if key not in merged and value is not None:
             merged[key] = value
     
-    # Ensure user_id is present (required for all operations)
-    if "user_id" not in merged and "user_id" in extracted_params:
-        merged["user_id"] = extracted_params["user_id"]
+    # Don't automatically add user_id here - it's injected later in tool execution
+    # This prevents LLM-generated placeholders from being used
     
     return merged
 
