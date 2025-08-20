@@ -5,7 +5,6 @@ This provides a simple interface for testing user queries.
 
 from typing import Dict, Any, TypedDict
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolExecutor
 import logging
 
 logger = logging.getLogger(__name__)
