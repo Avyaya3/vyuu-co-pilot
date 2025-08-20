@@ -281,6 +281,12 @@ class DecisionRouter:
         
         # Find missing parameters
         provided_params = set(parameters.keys())
+        
+        # Special handling for user_id - consider it always available from state
+        if 'user_id' in expected_all and 'user_id' not in provided_params and state.user_id:
+            provided_params.add('user_id')
+            logger.info(f"Considering user_id as available from state: {state.user_id[:8]}...")
+        
         missing_params = [p for p in expected_all if p not in provided_params]
         critical_missing = [p for p in expected_critical if p not in provided_params]
         
