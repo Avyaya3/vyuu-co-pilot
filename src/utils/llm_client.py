@@ -13,6 +13,7 @@ Features:
 
 import os
 import logging
+import asyncio
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 
@@ -98,8 +99,12 @@ class LLMClient:
             
             logger.debug(f"Making LLM request: model={self.model}, messages={len(messages)}")
             
-            response = self.client.chat.completions.create(**request_params)
-            content = response.choices[0].message.content.strip()
+            # Use asyncio.to_thread to make the blocking OpenAI call async
+            def _make_openai_call():
+                response = self.client.chat.completions.create(**request_params)
+                return response.choices[0].message.content.strip()
+            
+            content = await asyncio.to_thread(_make_openai_call)
             
             logger.debug(f"LLM response received: length={len(content)}")
             return content
