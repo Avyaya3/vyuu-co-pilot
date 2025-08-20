@@ -20,7 +20,8 @@
     "pyyaml>=6.0.0"
   ],
   "graphs": {
-    "main_orchestrator": "src.graphs.main_orchestrator_graph:main_orchestrator_graph"
+    "main_orchestrator": "src.graphs.main_orchestrator_graph:main_orchestrator_graph",
+    "chat": "src.graphs.chat_graph:chat_graph_compiled"
   },
   "environment": {
     "OPENAI_API_KEY": {
