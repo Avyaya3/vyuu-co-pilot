@@ -87,7 +87,7 @@ class ExecutionStepResult:
 async def _execute_single_step(
     step: Dict[str, Any], 
     step_index: int, 
-    extracted_params: Dict[str, Any] ) -> ExecutionStepResult:
+    base_extracted_params: Dict[str, Any] ) -> ExecutionStepResult:
     """
     Execute a single step in the execution plan.
     
@@ -119,8 +119,8 @@ async def _execute_single_step(
         return result
     
     # Merge parameters with safeguards: never allow step params to override critical fields
-    # Start with extracted parameters (validated from earlier nodes)
-    merged_params = {**extracted_params}
+    # Start with base extracted parameters (which already have enforced user_id)
+    merged_params = {**base_extracted_params}
     # Apply step params for non-critical fields only
     for key, value in (step_params or {}).items():
         if key == "user_id":
@@ -136,6 +136,11 @@ async def _execute_single_step(
         tool_schema = get_tool_schema(tool_name)
         validated_params = tool_schema(**merged_params)
         final_params = validated_params.model_dump()
+        
+        # Debug logging for final parameters
+        logger.info(f"Tool execution debug - final_params user_id: {final_params.get('user_id')}")
+        logger.info(f"Tool execution debug - final_params keys: {list(final_params.keys())}")
+        
     except Exception as e:
         result.end_execution(False, error=f"Parameter validation failed: {str(e)}")
         return result
