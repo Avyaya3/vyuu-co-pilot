@@ -325,13 +325,16 @@ class DecisionRouter:
         param_analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Apply routing logic based on confidence and parameter analysis.
+        Apply routing logic based primarily on confidence thresholds.
+        
+        Parameter completeness analysis is now handled by the clarification subgraph
+        which has access to proper parameter extraction capabilities.
         
         Args:
             intent: The classified intent
             confidence: Confidence score
             confidence_level: Categorical confidence level
-            param_analysis: Parameter completeness analysis
+            param_analysis: Parameter completeness analysis (used for logging only)
             
         Returns:
             Dictionary with routing decision and reasoning
@@ -357,10 +360,9 @@ class DecisionRouter:
                 "threshold_used": intent_threshold
             }
         
-        # Apply confidence-based routing with more permissive parameter checking
+        # Apply confidence-based routing - let clarification subgraph handle parameter analysis
         if confidence_level == ConfidenceLevel.HIGH:
-            # For high confidence, route directly to orchestrator 
-            # Parameter extraction will handle extracting missing parameters
+            # High confidence -> direct orchestrator
             return {
                 "decision": "direct_orchestrator",
                 "reason": RoutingReason.HIGH_CONFIDENCE_COMPLETE,
@@ -369,27 +371,20 @@ class DecisionRouter:
             }
         
         elif confidence_level == ConfidenceLevel.MEDIUM:
-            # For medium confidence, check if we have critical parameters
-            if not param_analysis["critical_missing"] or len(param_analysis["critical_missing"]) <= 1:
-                return {
-                    "decision": "direct_orchestrator",
-                    "reason": RoutingReason.MEDIUM_CONFIDENCE_COMPLETE,
-                    "explanation": f"Medium confidence ({confidence:.2f}) with minimal missing parameters. Routing to direct orchestrator.",
-                    "threshold_used": self.config.medium_confidence_threshold
-                }
-            else:
-                return {
-                    "decision": "clarification",
-                    "reason": RoutingReason.MEDIUM_CONFIDENCE_INCOMPLETE,
-                    "explanation": f"Medium confidence ({confidence:.2f}) with critical parameters missing: {param_analysis['critical_missing']}",
-                    "threshold_used": self.config.medium_confidence_threshold
-                }
+            # Medium confidence -> direct orchestrator (let parameter extraction handle details)
+            return {
+                "decision": "direct_orchestrator",
+                "reason": RoutingReason.MEDIUM_CONFIDENCE_COMPLETE,
+                "explanation": f"Medium confidence ({confidence:.2f}) routing to orchestrator. Parameter extraction will handle missing details if needed.",
+                "threshold_used": self.config.medium_confidence_threshold
+            }
         
         else:  # LOW confidence
+            # Low confidence -> clarification (for intent refinement, not just parameters)
             return {
                 "decision": "clarification",
                 "reason": RoutingReason.LOW_CONFIDENCE,
-                "explanation": f"Low confidence ({confidence:.2f}) requires clarification.",
+                "explanation": f"Low confidence ({confidence:.2f}) requires clarification to confirm intent and collect parameters.",
                 "threshold_used": self.config.low_confidence_threshold
             }
     
