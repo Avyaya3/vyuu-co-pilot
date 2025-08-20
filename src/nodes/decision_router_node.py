@@ -357,45 +357,31 @@ class DecisionRouter:
                 "threshold_used": intent_threshold
             }
         
-        # Check for critical missing parameters
-        if param_analysis["critical_missing"] and self.config.require_critical_params:
+        # Apply confidence-based routing with more permissive parameter checking
+        if confidence_level == ConfidenceLevel.HIGH:
+            # For high confidence, route directly to orchestrator 
+            # Parameter extraction will handle extracting missing parameters
             return {
-                "decision": "clarification",
-                "reason": RoutingReason.MISSING_CRITICAL_PARAMS,
-                "explanation": f"Critical parameters missing: {param_analysis['critical_missing']}",
-                "threshold_used": "critical_params_rule"
+                "decision": "direct_orchestrator",
+                "reason": RoutingReason.HIGH_CONFIDENCE_COMPLETE,
+                "explanation": f"High confidence ({confidence:.2f}) allows direct routing. Parameter extraction will handle any missing details.",
+                "threshold_used": self.config.high_confidence_threshold
             }
         
-        # Apply confidence-based routing
-        if confidence_level == ConfidenceLevel.HIGH:
-            if param_analysis["complete"]:
-                return {
-                    "decision": "direct_orchestrator",
-                    "reason": RoutingReason.HIGH_CONFIDENCE_COMPLETE,
-                    "explanation": f"High confidence ({confidence:.2f}) with complete parameters. Routing to direct orchestrator.",
-                    "threshold_used": self.config.high_confidence_threshold
-                }
-            else:
-                return {
-                    "decision": "clarification",
-                    "reason": RoutingReason.HIGH_CONFIDENCE_INCOMPLETE,
-                    "explanation": f"High confidence ({confidence:.2f}) but missing parameters: {param_analysis['missing']}",
-                    "threshold_used": self.config.high_confidence_threshold
-                }
-        
         elif confidence_level == ConfidenceLevel.MEDIUM:
-            if param_analysis["complete"]:
+            # For medium confidence, check if we have critical parameters
+            if not param_analysis["critical_missing"] or len(param_analysis["critical_missing"]) <= 1:
                 return {
                     "decision": "direct_orchestrator",
                     "reason": RoutingReason.MEDIUM_CONFIDENCE_COMPLETE,
-                    "explanation": f"Medium confidence ({confidence:.2f}) with complete parameters. Routing to direct orchestrator.",
+                    "explanation": f"Medium confidence ({confidence:.2f}) with minimal missing parameters. Routing to direct orchestrator.",
                     "threshold_used": self.config.medium_confidence_threshold
                 }
             else:
                 return {
                     "decision": "clarification",
                     "reason": RoutingReason.MEDIUM_CONFIDENCE_INCOMPLETE,
-                    "explanation": f"Medium confidence ({confidence:.2f}) with missing parameters: {param_analysis['missing']}",
+                    "explanation": f"Medium confidence ({confidence:.2f}) with critical parameters missing: {param_analysis['critical_missing']}",
                     "threshold_used": self.config.medium_confidence_threshold
                 }
         
