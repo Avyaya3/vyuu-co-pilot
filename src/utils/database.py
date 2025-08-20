@@ -110,6 +110,14 @@ class SupabaseClient:
     async def _create_postgres_pool(self) -> None:
         """Create the PostgreSQL connection pool."""
         try:
+            # Configure SSL for Supabase connection
+            ssl_config = {
+                'ssl': 'require',  # Require SSL but don't verify certificate
+                'server_settings': {
+                    'application_name': 'vyuu_copilot_v2'
+                }
+            }
+            
             self._pg_pool = await asyncpg.create_pool(
                 self.config.database.url,
                 min_size=self.config.database.pool_size // 2,
@@ -119,6 +127,7 @@ class SupabaseClient:
                 timeout=self.config.database.pool_timeout,
                 command_timeout=60,
                 statement_cache_size=0,  # Disable prepared statements for Supavisor compatibility
+                **ssl_config
             )
             
             logger.info(

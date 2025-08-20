@@ -381,8 +381,16 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         # Prepare base extracted params and enforce real user_id from state metadata
         base_extracted_params = dict(state.extracted_params or {})
         real_user_id = (state.metadata or {}).get("user_id")
+        
+        # Debug logging for user_id enforcement
+        logger.info(f"Tool execution debug - extracted_params user_id: {base_extracted_params.get('user_id')}")
+        logger.info(f"Tool execution debug - state metadata user_id: {real_user_id}")
+        
         if real_user_id:
             base_extracted_params["user_id"] = real_user_id
+            logger.info(f"Tool execution debug - enforced user_id: {real_user_id}")
+        else:
+            logger.warning("Tool execution debug - no real user_id found in state metadata!")
         
         # Execute steps with safe parameters
         if execution_strategy == "transaction":
