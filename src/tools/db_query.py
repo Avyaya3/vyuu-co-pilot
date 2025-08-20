@@ -45,7 +45,7 @@ class DbQueryParams(BaseModel):
     days_back: Optional[int] = Field(30, ge=1, le=365, description="Number of days to look back")
     
     class Config:
-        extra = "forbid"
+        extra = "ignore"  # Allow extra parameters but ignore them
 
 
 class DbQueryTool:
@@ -222,11 +222,11 @@ class DbQueryTool:
                 {
                     "id": txn.id,
                     "amount": float(txn.amount),
-                    "type": txn.transaction_type.value,
+                    "type": txn.type.value,
                     "counterparty": txn.counterparty,
                     "notes": txn.notes,
-                    "date": txn.transaction_date.isoformat(),
-                    "category": txn.category.name if txn.category else None
+                    "date": txn.occurred_at.isoformat(),
+                    "category": "Unknown"  # TODO: Join with categories table
                 }
                 for txn in transactions
             ]
