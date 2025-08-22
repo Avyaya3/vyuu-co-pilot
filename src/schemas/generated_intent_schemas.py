@@ -1,7 +1,7 @@
 """
 Auto-generated Intent Schemas from YAML Configuration.
 
-Generated on: 2025-07-17T17:28:46.831910
+Generated on: 2025-08-22T12:18:23.638221
 Source: /Users/manjiripathak/Avyaya/vyuu-copilot-v2/config/intent_parameters.yaml
 
 DO NOT EDIT MANUALLY - Run scripts/generate_intent_schemas.py to regenerate.
@@ -31,54 +31,105 @@ class ConfidenceLevel(str, Enum):
 
 class DataFetchParams(BaseModel):
     """
-    Retrieve and display financial data
+    Retrieve and display financial data from various entity types
     
     Auto-generated from intent_parameters.yaml
     """
     
     # Critical parameters
-    entity_type: Optional[str] = Field(None, description="Type of data entity (transactions, accounts, balances, etc.)")
+    entity_type: Optional[str] = Field(None, description="Type of financial entity (assets, liabilities, savings, income, expenses, stocks, insurance, goals, financial_summary)")
 
     # Optional parameters
-    time_period: Optional[str] = Field(None, description="Time range for data (last_month, last_3_months, specific_date, etc.)")
-    account_types: Optional[List[str]] = Field(None, description="Types of accounts to include (checking, savings, credit, etc.)")
+    time_period: Optional[str] = Field(None, description="Time range for data (last_month, last_3_months, this_year, specific_date, etc.)")
+    category: Optional[str] = Field(None, description="Category filter (real_estate, vehicles, loans, credit_cards, etc.)")
+    subcategory: Optional[str] = Field(None, description="Subcategory filter (groceries, entertainment, transportation, etc.)")
+    type: Optional[str] = Field(None, description="Type filter (checking, savings, mortgage, health_insurance, etc.)")
+    provider: Optional[str] = Field(None, description="Provider filter (bank names, insurance companies, etc.)")
+    name: Optional[str] = Field(None, description="Name filter for specific entities")
+    source: Optional[str] = Field(None, description="Income source filter (salary, freelance, investment, etc.)")
+    frequency: Optional[str] = Field(None, description="Frequency filter (monthly, quarterly, yearly)")
+    payment_method: Optional[str] = Field(None, description="Payment method filter (credit_card, cash, bank_transfer, etc.)")
+    priority: Optional[str] = Field(None, description="Priority filter (low, medium, high)")
+    min_amount: Optional[int] = Field(None, description="Minimum amount filter (in cents)", ge=0)
+    max_amount: Optional[int] = Field(None, description="Maximum amount filter (in cents)", ge=0)
+    min_premium: Optional[int] = Field(None, description="Minimum premium filter for insurance (in cents)", ge=0)
+    max_premium: Optional[int] = Field(None, description="Maximum premium filter for insurance (in cents)", ge=0)
+    min_coverage: Optional[int] = Field(None, description="Minimum coverage filter for insurance (in cents)", ge=0)
+    max_coverage: Optional[int] = Field(None, description="Maximum coverage filter for insurance (in cents)", ge=0)
+    min_current_value: Optional[int] = Field(None, description="Minimum current value filter for assets/stocks (in cents)", ge=0)
+    max_current_value: Optional[int] = Field(None, description="Maximum current value filter for assets/stocks (in cents)", ge=0)
+    min_target: Optional[int] = Field(None, description="Minimum target filter for goals (in cents)", ge=0)
+    max_target: Optional[int] = Field(None, description="Maximum target filter for goals (in cents)", ge=0)
+    start_date: Optional[datetime] = Field(None, description="Start date filter")
+    end_date: Optional[datetime] = Field(None, description="End date filter")
     limit: Optional[int] = Field(None, description="Maximum number of records to return", ge=1, le=1000)
-    sort_by: Optional[str] = Field(None, description="Field to sort results by")
-    order: Optional[str] = Field(None, description="Sort order (asc, desc)")
+    offset: Optional[int] = Field(None, description="Number of records to skip for pagination", ge=0)
+    order_by: Optional[str] = Field(None, description="Field to sort results by (name, amount, date, etc.)")
+    order_direction: Optional[str] = Field(None, description="Sort order (asc, desc)")
+    entity_id: Optional[str] = Field(None, description="Specific entity ID for single record queries")
 
 
 class AggregateParams(BaseModel):
     """
-    Analyze and summarize financial data
+    Analyze and summarize financial data across different entity types
     
     Auto-generated from intent_parameters.yaml
     """
     
     # Critical parameters
-    metric_type: Optional[str] = Field(None, description="Type of metric to calculate (sum, average, count, etc.)")
+    metric_type: Optional[str] = Field(None, description="Type of metric to calculate (sum, average, count, summary, etc.)")
 
     # Optional parameters
-    group_by: Optional[str] = Field(None, description="Field to group results by")
+    group_by: Optional[str] = Field(None, description="Field to group results by (category, type, provider, etc.)")
     time_period: Optional[str] = Field(None, description="Time range for aggregation")
     category_filter: Optional[List[str]] = Field(None, description="Categories to include in aggregation")
-    account_filter: Optional[List[str]] = Field(None, description="Accounts to include in aggregation")
+    entity_filter: Optional[List[str]] = Field(None, description="Entity types to include in aggregation")
+    amount_range: Optional[List[int]] = Field(None, description="Amount range filter [min, max] in cents")
 
 
 class ActionParams(BaseModel):
     """
-    Execute financial operations and transactions
+    Execute financial operations and manage financial entities
     
     Auto-generated from intent_parameters.yaml
     """
     
     # Critical parameters
-    action_type: Optional[str] = Field(None, description="Type of action to perform (transfer, payment, etc.)")
+    action_type: Optional[str] = Field(None, description="Type of action to perform (create, update, delete, transfer, etc.)")
 
     # Optional parameters
-    amount: Optional[float] = Field(None, description="Amount for the action", ge=0)
-    source_account: Optional[str] = Field(None, description="Source account for the action")
-    target_account: Optional[str] = Field(None, description="Target account for the action")
-    description: Optional[str] = Field(None, description="Description of the action")
+    amount: Optional[int] = Field(None, description="Amount for the action (in cents)", ge=0)
+    entity_type: Optional[str] = Field(None, description="Type of entity for the action (asset, liability, savings, income, expense, stock, insurance, goal)")
+    entity_id: Optional[str] = Field(None, description="Specific entity ID for update/delete operations")
+    name: Optional[str] = Field(None, description="Name for the entity")
+    category: Optional[str] = Field(None, description="Category for the entity")
+    subcategory: Optional[str] = Field(None, description="Subcategory for the entity")
+    type: Optional[str] = Field(None, description="Type for the entity")
+    provider: Optional[str] = Field(None, description="Provider for the entity")
+    source: Optional[str] = Field(None, description="Source for income")
+    frequency: Optional[str] = Field(None, description="Frequency for income")
+    payment_method: Optional[str] = Field(None, description="Payment method for expenses")
+    priority: Optional[str] = Field(None, description="Priority for goals")
+    description: Optional[str] = Field(None, description="Description of the entity or action")
+    date: Optional[datetime] = Field(None, description="Date for the entity")
+    start_date: Optional[datetime] = Field(None, description="Start date for the entity")
+    end_date: Optional[datetime] = Field(None, description="End date for the entity")
+    target_date: Optional[datetime] = Field(None, description="Target date for goals")
+    current_value: Optional[int] = Field(None, description="Current value for assets/stocks (in cents)")
+    purchase_value: Optional[int] = Field(None, description="Purchase value for assets (in cents)")
+    purchase_date: Optional[datetime] = Field(None, description="Purchase date for assets/stocks")
+    returns: Optional[float] = Field(None, description="Returns percentage for stocks")
+    premium: Optional[int] = Field(None, description="Premium for insurance (in cents)")
+    coverage: Optional[int] = Field(None, description="Coverage for insurance (in cents)")
+    policy_number: Optional[str] = Field(None, description="Policy number for insurance")
+    current_balance: Optional[int] = Field(None, description="Current balance for savings (in cents)")
+    interest_rate: Optional[float] = Field(None, description="Interest rate for savings/liabilities")
+    maturity_date: Optional[datetime] = Field(None, description="Maturity date for savings")
+    monthly_contribution: Optional[int] = Field(None, description="Monthly contribution for savings (in cents)")
+    target_amount: Optional[int] = Field(None, description="Target amount for savings/goals (in cents)")
+    emi: Optional[int] = Field(None, description="EMI for liabilities (in cents)")
+    target: Optional[int] = Field(None, description="Target amount for goals (in cents)")
+    current: Optional[int] = Field(None, description="Current amount for goals (in cents)")
 
 
 class UnknownParams(BaseModel):
