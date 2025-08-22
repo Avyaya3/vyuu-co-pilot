@@ -94,13 +94,26 @@ def get_tool_info() -> Dict[str, Dict[str, str]]:
     return {
         "db_query": {
             "name": "db_query",
-            "description": "Read-only database operations (balances, history, verification)",
+            "description": "Read-only database operations for financial data",
             "operations": [
-                "get_account_balance",
-                "get_transaction_history", 
-                "get_user_accounts",
-                "verify_account_exists",
-                "get_account_details"
+                # Asset operations
+                "get_user_assets", "get_asset_by_id", "get_asset_summary", "get_assets_by_category",
+                # Liability operations
+                "get_user_liabilities", "get_liability_by_id", "get_liability_summary", "get_liabilities_by_type",
+                # Savings operations
+                "get_user_savings", "get_savings_by_id", "get_savings_summary", "get_savings_by_type",
+                # Income operations
+                "get_user_incomes", "get_income_by_id", "get_income_summary", "get_incomes_by_category", "get_incomes_by_frequency",
+                # Expense operations
+                "get_user_expenses", "get_expense_by_id", "get_expense_summary", "get_expenses_by_category", "get_expenses_by_subcategory", "get_expenses_by_payment_method",
+                # Stock operations
+                "get_user_stocks", "get_stock_by_id", "get_stock_summary", "get_stocks_by_type",
+                # Insurance operations
+                "get_user_insurances", "get_insurance_by_id", "get_insurance_summary", "get_insurances_by_type", "get_insurances_by_provider",
+                # Goal operations
+                "get_user_goals", "get_goal_by_id", "get_goals_by_category", "get_goals_by_priority",
+                # Financial summary
+                "get_financial_summary"
             ]
         },
         "db_aggregate": {

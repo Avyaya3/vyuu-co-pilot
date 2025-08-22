@@ -16,8 +16,13 @@ from typing import Dict, Any, Optional
 
 from .base_repository import BaseRepository, RepositoryError, EntityNotFoundError, EntityValidationError, DatabaseOperationError
 from .user_repository import UserRepository
-from .account_repository import AccountRepository
-from .transaction_repository import TransactionRepository
+from .asset_repository import AssetRepository
+from .liability_repository import LiabilityRepository
+from .savings_repository import SavingsRepository
+from .income_repository import IncomeRepository
+from .expense_repository import ExpenseRepository
+from .stock_repository import StockRepository
+from .insurance_repository import InsuranceRepository
 from .goal_repository import GoalRepository
 
 logger = logging.getLogger(__name__)
@@ -43,8 +48,13 @@ class RepositoryFactory:
         
         try:
             self._repositories['user'] = UserRepository()
-            self._repositories['account'] = AccountRepository()
-            self._repositories['transaction'] = TransactionRepository()
+            self._repositories['asset'] = AssetRepository()
+            self._repositories['liability'] = LiabilityRepository()
+            self._repositories['savings'] = SavingsRepository()
+            self._repositories['income'] = IncomeRepository()
+            self._repositories['expense'] = ExpenseRepository()
+            self._repositories['stock'] = StockRepository()
+            self._repositories['insurance'] = InsuranceRepository()
             self._repositories['goal'] = GoalRepository()
             
             self._initialized = True
@@ -60,17 +70,47 @@ class RepositoryFactory:
             self.initialize()
         return self._repositories['user']
     
-    def get_account_repository(self) -> AccountRepository:
-        """Get the account repository instance."""
+    def get_asset_repository(self) -> AssetRepository:
+        """Get the asset repository instance."""
         if not self._initialized:
             self.initialize()
-        return self._repositories['account']
+        return self._repositories['asset']
     
-    def get_transaction_repository(self) -> TransactionRepository:
-        """Get the transaction repository instance."""
+    def get_liability_repository(self) -> LiabilityRepository:
+        """Get the liability repository instance."""
         if not self._initialized:
             self.initialize()
-        return self._repositories['transaction']
+        return self._repositories['liability']
+    
+    def get_savings_repository(self) -> SavingsRepository:
+        """Get the savings repository instance."""
+        if not self._initialized:
+            self.initialize()
+        return self._repositories['savings']
+    
+    def get_income_repository(self) -> IncomeRepository:
+        """Get the income repository instance."""
+        if not self._initialized:
+            self.initialize()
+        return self._repositories['income']
+    
+    def get_expense_repository(self) -> ExpenseRepository:
+        """Get the expense repository instance."""
+        if not self._initialized:
+            self.initialize()
+        return self._repositories['expense']
+    
+    def get_stock_repository(self) -> StockRepository:
+        """Get the stock repository instance."""
+        if not self._initialized:
+            self.initialize()
+        return self._repositories['stock']
+    
+    def get_insurance_repository(self) -> InsuranceRepository:
+        """Get the insurance repository instance."""
+        if not self._initialized:
+            self.initialize()
+        return self._repositories['insurance']
     
     def get_goal_repository(self) -> GoalRepository:
         """Get the goal repository instance."""
@@ -155,14 +195,39 @@ def get_user_repository() -> UserRepository:
     return get_repository_factory().get_user_repository()
 
 
-def get_account_repository() -> AccountRepository:
-    """Get account repository instance."""
-    return get_repository_factory().get_account_repository()
+def get_asset_repository() -> AssetRepository:
+    """Get asset repository instance."""
+    return get_repository_factory().get_asset_repository()
 
 
-def get_transaction_repository() -> TransactionRepository:
-    """Get transaction repository instance."""
-    return get_repository_factory().get_transaction_repository()
+def get_liability_repository() -> LiabilityRepository:
+    """Get liability repository instance."""
+    return get_repository_factory().get_liability_repository()
+
+
+def get_savings_repository() -> SavingsRepository:
+    """Get savings repository instance."""
+    return get_repository_factory().get_savings_repository()
+
+
+def get_income_repository() -> IncomeRepository:
+    """Get income repository instance."""
+    return get_repository_factory().get_income_repository()
+
+
+def get_expense_repository() -> ExpenseRepository:
+    """Get expense repository instance."""
+    return get_repository_factory().get_expense_repository()
+
+
+def get_stock_repository() -> StockRepository:
+    """Get stock repository instance."""
+    return get_repository_factory().get_stock_repository()
+
+
+def get_insurance_repository() -> InsuranceRepository:
+    """Get insurance repository instance."""
+    return get_repository_factory().get_insurance_repository()
 
 
 def get_goal_repository() -> GoalRepository:
@@ -181,15 +246,25 @@ __all__ = [
     
     # Repository classes
     'UserRepository',
-    'AccountRepository', 
-    'TransactionRepository',
+    'AssetRepository', 
+    'LiabilityRepository',
+    'SavingsRepository',
+    'IncomeRepository',
+    'ExpenseRepository',
+    'StockRepository',
+    'InsuranceRepository',
     'GoalRepository',
     
     # Factory and convenience functions
     'RepositoryFactory',
     'get_repository_factory',
     'get_user_repository',
-    'get_account_repository',
-    'get_transaction_repository',
+    'get_asset_repository',
+    'get_liability_repository',
+    'get_savings_repository',
+    'get_income_repository',
+    'get_expense_repository',
+    'get_stock_repository',
+    'get_insurance_repository',
     'get_goal_repository',
 ] 

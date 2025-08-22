@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 ModelType = TypeVar('ModelType', bound=BaseEntity)
 CreateModelType = TypeVar('CreateModelType', bound=BaseEntity)
 UpdateModelType = TypeVar('UpdateModelType', bound=BaseEntity)
-IdType = TypeVar('IdType', UUID, int)
+IdType = TypeVar('IdType', UUID, int, str)
 
 
 class RepositoryError(Exception):
