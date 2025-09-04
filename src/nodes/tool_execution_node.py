@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from ..schemas.state_schemas import OrchestratorState, MessageManager
 from ..tools import TOOL_REGISTRY, get_tool, get_tool_schema
-from ..services import get_financial_service
+# from ..services import get_financial_service  # Temporarily disabled
 from ..tools.base import ToolResponse
 
 logger = logging.getLogger(__name__)
@@ -222,53 +222,54 @@ async def _execute_single_step(
         await asyncio.sleep(delay)
 
 
-async def _execute_with_transaction(
-    steps: List[Dict[str, Any]], 
-    extracted_params: Dict[str, Any] ) -> Tuple[List[ExecutionStepResult], List[str]]:
-    """
-    Execute multiple steps within a database transaction.
-    
-    Args:
-        steps: List of steps to execute
-        extracted_params: Parameters extracted from user intent
-        
-    Returns:
-        Tuple of (results, errors)
-    """
-    results = []
-    errors = []
-    
-    financial_service = get_financial_service()
-    
-    async with financial_service.account_repo.transaction() as conn:
-        logger.info(f"Starting transaction for {len(steps)} steps")
-        
-        for i, step in enumerate(steps):
-            result = await _execute_single_step(step, i, extracted_params)
-            results.append(result)
-            
-            if not result.success:
-                errors.append(f"Step {i + 1} failed: {result.error}")
-                
-                # For now, continue with remaining steps (partial failure)
-                # In the future, this could be configurable based on step type
-                logger.warning(
-                    f"Step {i + 1} failed, continuing with remaining steps",
-                    extra={
-                        "step_index": i,
-                        "error": result.error,
-                        "steps_remaining": len(steps) - i - 1
-                    }
-                )
-        
-        # If any step failed, the transaction will be rolled back
-        if errors:
-            logger.error(f"Transaction will be rolled back due to {len(errors)} failures")
-            raise ToolExecutionError(f"Transaction failed: {'; '.join(errors)}")
-        
-        logger.info("Transaction completed successfully")
-    
-    return results, errors
+# Temporarily disabled - financial service not available
+# async def _execute_with_transaction(
+#     steps: List[Dict[str, Any]], 
+#     extracted_params: Dict[str, Any] ) -> Tuple[List[ExecutionStepResult], List[str]]:
+#     """
+#     Execute multiple steps within a database transaction.
+#     
+#     Args:
+#         steps: List of steps to execute
+#         extracted_params: Parameters extracted from user intent
+#         
+#     Returns:
+#         Tuple of (results, errors)
+#     """
+#     results = []
+#     errors = []
+#     
+#     # financial_service = get_financial_service()  # Temporarily disabled
+#     
+#     async with financial_service.account_repo.transaction() as conn:
+#         logger.info(f"Starting transaction for {len(steps)} steps")
+#         
+#         for i, step in enumerate(steps):
+#             result = await _execute_single_step(step, i, extracted_params)
+#             results.append(result)
+#             
+#             if not result.success:
+#                 errors.append(f"Step {i + 1} failed: {result.error}")
+#                 
+#                 # For now, continue with remaining steps (partial failure)
+#                 # In the future, this could be configurable based on step type
+#                 logger.warning(
+#                     f"Step {i + 1} failed, continuing with remaining steps",
+#                     extra={
+#                         "step_index": i,
+#                         "error": result.error,
+#                         "steps_remaining": len(steps) - i - 1
+#                     }
+#                 )
+#         
+#         # If any step failed, the transaction will be rolled back
+#         if errors:
+#             logger.error(f"Transaction will be rolled back due to {len(errors)} failures")
+#             raise ToolExecutionError(f"Transaction failed: {'; '.join(errors)}")
+#         
+#         logger.info("Transaction completed successfully")
+#     
+#     return results, errors
 
 
 async def _execute_without_transaction(
@@ -399,7 +400,7 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         else:
             logger.warning("Tool execution debug - no real user_id found in state metadata!")
             # Fallback to hardcoded test user for Studio
-            fallback_user_id = "0575867a-743a-4f26-99b3-95b87d116d7b"
+            fallback_user_id = "cmemx6bqy0000tb3perguhj4m"
             base_extracted_params["user_id"] = fallback_user_id
             logger.warning(f"Tool execution debug - using fallback user_id: {fallback_user_id}")
         

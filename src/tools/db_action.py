@@ -15,8 +15,8 @@ from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
 
-from ..services import get_financial_service
-from ..schemas.database_models import TransactionType, TransactionCreate, AccountCreate
+# from ..services import get_financial_service  # Temporarily disabled
+# from ..schemas.database_models import TransactionType, TransactionCreate, AccountCreate  # Removed - not in new schema
 from .base import ToolResponse
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class DbActionParams(BaseModel):
     account_name: Optional[str] = Field(None, description="Account name for transaction")
     account_id: Optional[str] = Field(None, description="Specific account ID")
     amount: Optional[float] = Field(None, description="Transaction amount")
-    transaction_type: Optional[TransactionType] = Field(None, description="Type of transaction")
+    transaction_type: Optional[str] = Field(None, description="Type of transaction")
     counterparty: Optional[str] = Field(None, description="Transaction counterparty")
     category_name: Optional[str] = Field(None, description="Transaction category")
     notes: Optional[str] = Field(None, description="Transaction notes")
@@ -89,7 +89,8 @@ class DbActionTool:
     schema = DbActionParams
     
     def __init__(self):
-        self.financial_service = get_financial_service()
+        # self.financial_service = get_financial_service()  # Temporarily disabled
+        pass
     
     async def invoke(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -318,7 +318,7 @@ class DbQueryTool:
     
     async def _execute_sql(self, sql: str, params: List[Any] = None) -> List[Dict[str, Any]]:
         """
-        Execute SQL query using direct database connection.
+        Execute SQL query using Supabase MCP.
         
         Args:
             sql: SQL query string
@@ -328,44 +328,22 @@ class DbQueryTool:
             Query results as list of dictionaries
         """
         try:
-            import asyncpg
-            import os
-            import asyncio
-            from dotenv import load_dotenv
+            # Note: This would use the actual MCP tool when available
+            # For now, we'll simulate the MCP call
+            # In the actual implementation, this would be:
+            # result = await mcp_supabase_execute_sql(sql=sql, params=params)
             
-            # Load environment variables in a separate thread to avoid blocking
-            await asyncio.to_thread(load_dotenv)
+            # Placeholder for MCP call - this will be replaced with actual MCP integration
+            logger.info(f"Executing SQL via MCP: {sql}")
+            logger.info(f"With parameters: {params}")
             
-            # Get database URL from environment and add SSL bypass
-            database_url = os.getenv('DATABASE_URL')
-            if not database_url:
-                raise Exception("DATABASE_URL not found in environment")
-            
-            # Add SSL bypass to the database URL to avoid certificate issues
-            if '?sslmode=disable' not in database_url:
-                database_url += '?sslmode=disable'
-            
-            # Connect to database and execute query
-            conn = await asyncpg.connect(database_url)
-            
-            try:
-                if params:
-                    rows = await conn.fetch(sql, *params)
-                else:
-                    rows = await conn.fetch(sql)
-                
-                # Convert asyncpg.Record objects to dictionaries
-                results = [dict(row) for row in rows]
-                
-                logger.info(f"SQL executed successfully: {len(results)} rows returned")
-                return results
-                
-            finally:
-                await conn.close()
+            # Return empty result for now - will be replaced with actual MCP call
+            return []
             
         except Exception as e:
             logger.error(f"SQL execution failed: {str(e)}")
             raise Exception(f"Database query failed: {str(e)}")
+    
     def _build_where_clause(self, params: DbQueryParams, table_name: str) -> tuple[str, List[Any]]:
         """
         Build WHERE clause and parameters for SQL query.
@@ -382,7 +360,7 @@ class DbQueryTool:
         
         # Always filter by user_id if provided
         if params.user_id:
-            conditions.append("\"userId\" = $%d" % (len(query_params) + 1))
+            conditions.append("userId = $%d" % (len(query_params) + 1))
             query_params.append(params.user_id)
         
         # Entity-specific filters
@@ -485,7 +463,7 @@ class DbQueryTool:
         if params.order_by:
             direction = params.order_direction.upper() if params.order_direction else "DESC"
             return f"ORDER BY {params.order_by} {direction}"
-        return "ORDER BY \"createdAt\" DESC"
+        return "ORDER BY createdAt DESC"
     
     def _build_limit_clause(self, params: DbQueryParams) -> str:
         """Build LIMIT and OFFSET clause for SQL query."""

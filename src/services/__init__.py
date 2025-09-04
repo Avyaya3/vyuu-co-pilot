@@ -8,7 +8,7 @@ repository operations and implement domain-specific business rules.
 import logging
 from typing import Optional
 
-from .financial_service import FinancialService
+# from .financial_service import FinancialService  # Temporarily disabled due to repository changes
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +34,18 @@ class ServiceFactory:
         self._initialized = True
         logger.info("Service factory initialized")
     
-    def get_financial_service(self) -> FinancialService:
-        """
-        Get financial service instance.
-        
-        Returns:
-            FinancialService instance for financial operations
-        """
-        if 'financial_service' not in self._services:
-            self._services['financial_service'] = FinancialService()
-            logger.debug("Created new FinancialService instance")
-        
-        return self._services['financial_service']
+    # def get_financial_service(self) -> FinancialService:  # Temporarily disabled
+    #     """
+    #     Get financial service instance.
+    #     
+    #     Returns:
+    #         FinancialService instance for financial operations
+    #     """
+    #     if 'financial_service' not in self._services:
+    #         self._services['financial_service'] = FinancialService()
+    #         logger.debug("Created new FinancialService instance")
+    #     
+    #     return self._services['financial_service']
     
     def reset(self):
         """Reset all services (useful for testing)."""
@@ -72,15 +72,15 @@ def get_service_factory() -> ServiceFactory:
 
 
 # Convenience functions for direct service access
-def get_financial_service() -> FinancialService:
-    """Get financial service instance."""
-    return get_service_factory().get_financial_service()
+# def get_financial_service() -> FinancialService:  # Temporarily disabled
+#     """Get financial service instance."""
+#     return get_service_factory().get_financial_service()
 
 
 # Export commonly used items
 __all__ = [
     "ServiceFactory",
     "get_service_factory", 
-    "get_financial_service",
-    "FinancialService"
+    # "get_financial_service",  # Temporarily disabled
+    # "FinancialService"  # Temporarily disabled
 ] 

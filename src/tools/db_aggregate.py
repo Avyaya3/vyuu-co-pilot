@@ -15,8 +15,8 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 
-from ..services import get_financial_service
-from ..schemas.database_models import TransactionType
+# from ..services import get_financial_service  # Temporarily disabled
+# from ..schemas.database_models import TransactionType  # Removed - not in new schema
 from .base import ToolResponse
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class DbAggregateParams(BaseModel):
     
     # Filtering parameters
     category_name: Optional[str] = Field(None, description="Category filter")
-    transaction_type: Optional[TransactionType] = Field(None, description="Transaction type filter")
+    transaction_type: Optional[str] = Field(None, description="Transaction type filter")
     min_amount: Optional[float] = Field(None, description="Minimum amount filter")
     max_amount: Optional[float] = Field(None, description="Maximum amount filter")
     
@@ -72,7 +72,8 @@ class DbAggregateTool:
     schema = DbAggregateParams
     
     def __init__(self):
-        self.financial_service = get_financial_service()
+        # self.financial_service = get_financial_service()  # Temporarily disabled
+        pass
     
     async def invoke(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -222,7 +223,7 @@ class DbAggregateTool:
         # Calculate income (positive transactions)
         income_transactions = await self.financial_service.transaction_repo.get_transactions_by_type(
             user_id=params.user_id,
-            transaction_type=TransactionType.RECEIVED,
+            transaction_type="RECEIVED",
             days_back=30
         )
         total_income = sum(txn.amount for txn in income_transactions)
@@ -403,9 +404,9 @@ class DbAggregateTool:
         expenses = 0
         
         for txn in all_transactions:
-            if txn.transaction_type in [TransactionType.RECEIVED]:
+            if txn.transaction_type in ["RECEIVED"]:
                 income += float(txn.amount)
-            elif txn.transaction_type in [TransactionType.PAID]:
+            elif txn.transaction_type in ["PAID"]:
                 expenses += float(txn.amount)
         
         net_income = income - expenses
@@ -417,12 +418,12 @@ class DbAggregateTool:
             "income": {
                 "total": float(income),
                 "daily_average": float(income / days_back),
-                "transaction_count": len([t for t in all_transactions if t.transaction_type == TransactionType.RECEIVED])
+                "transaction_count": len([t for t in all_transactions if t.transaction_type == "RECEIVED"])
             },
             "expenses": {
                 "total": float(expenses),
                 "daily_average": float(expenses / days_back),
-                "transaction_count": len([t for t in all_transactions if t.transaction_type == TransactionType.PAID])
+                "transaction_count": len([t for t in all_transactions if t.transaction_type == "PAID"])
             },
             "net_income": float(net_income),
             "savings_rate_percent": float(savings_rate),

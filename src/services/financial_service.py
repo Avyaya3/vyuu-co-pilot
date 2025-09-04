@@ -19,8 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from ..repositories import (
-    get_user_repository, get_account_repository, 
-    get_transaction_repository, get_goal_repository,
+    get_user_repository, get_goal_repository,
     EntityNotFoundError, EntityValidationError, DatabaseOperationError
 )
 from ..schemas.database_models import (
@@ -58,12 +57,13 @@ class FinancialService:
     def __init__(self):
         """Initialize the financial service."""
         self.user_repo = get_user_repository()
-        self.account_repo = get_account_repository()
-        self.transaction_repo = get_transaction_repository()
+        # Note: Account and transaction repositories removed - using new entity-based repositories
+        # self.account_repo = get_account_repository()  # Removed
+        # self.transaction_repo = get_transaction_repository()  # Removed
         self.goal_repo = get_goal_repository()
         
         # Expose repositories for tools that need direct access
-        self.account_type_repo = self.account_repo  # Account types are managed by account repo
+        # self.account_type_repo = self.account_repo  # Removed - account repo no longer exists
         self.category_repo = self  # Categories managed by this service (methods below)
         
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
