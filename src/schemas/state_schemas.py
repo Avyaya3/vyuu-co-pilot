@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, validat
 
 
 # Configuration Constants
-MAX_MESSAGE_LENGTH = 1000
+MAX_MESSAGE_LENGTH = 10000
 MAX_CONVERSATION_HISTORY = 20
 MAX_CLARIFICATION_ATTEMPTS = 3
 
