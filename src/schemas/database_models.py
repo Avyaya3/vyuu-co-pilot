@@ -15,6 +15,7 @@ Features:
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
@@ -628,4 +629,54 @@ class SpendingByMonth(BaseEntity):
     year: int
     month: int
     totalAmount: int  # Amount in cents
-    transactionCount: int 
+    transactionCount: int
+
+
+# Conversation Session Models
+class ConversationSession(BaseEntity):
+    """Conversation session model for LangGraph state persistence."""
+    session_id: str = Field(..., description="Unique session identifier")
+    user_id: Optional[str] = Field(None, description="Associated user ID")
+    state_data: Dict[str, Any] = Field(..., description="Serialized LangGraph state")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    expires_at: Optional[datetime] = Field(None, description="Session expiration timestamp")
+    is_active: bool = Field(True, description="Whether the session is active")
+    message_count: int = Field(0, description="Number of messages in the session")
+    last_intent: Optional[str] = Field(None, description="Last classified intent")
+    last_confidence: Optional[float] = Field(None, description="Last intent confidence score")
+    
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        """Validate session ID format."""
+        if not v or len(v) < 8:
+            raise ValueError("Session ID must be at least 8 characters long")
+        return v
+    
+    @field_validator("state_data")
+    @classmethod
+    def validate_state_data(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate state data is a dictionary."""
+        if not isinstance(v, dict):
+            raise ValueError("State data must be a dictionary")
+        return v
+
+
+class ConversationSessionCreate(BaseEntity):
+    """Model for creating a new conversation session."""
+    session_id: str
+    user_id: Optional[str] = None
+    state_data: Dict[str, Any]
+    expires_at: Optional[datetime] = None
+
+
+class ConversationSessionUpdate(BaseEntity):
+    """Model for updating an existing conversation session."""
+    state_data: Optional[Dict[str, Any]] = None
+    updated_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
+    message_count: Optional[int] = None
+    last_intent: Optional[str] = None
+    last_confidence: Optional[float] = None 

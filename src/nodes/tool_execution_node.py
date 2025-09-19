@@ -87,7 +87,8 @@ class ExecutionStepResult:
 async def _execute_single_step(
     step: Dict[str, Any], 
     step_index: int, 
-    base_extracted_params: Dict[str, Any] ) -> ExecutionStepResult:
+    base_extracted_params: Dict[str, Any],
+    state: Any = None ) -> ExecutionStepResult:
     """
     Execute a single step in the execution plan.
     
@@ -121,6 +122,12 @@ async def _execute_single_step(
     # Merge parameters with safeguards: never allow step params to override critical fields
     # Start with base extracted parameters (which already have enforced user_id)
     merged_params = {**base_extracted_params}
+    
+    # Add Supabase JWT token from state metadata if available
+    if state and hasattr(state, 'metadata') and state.metadata and 'supabase_jwt_token' in state.metadata:
+        merged_params["supabase_jwt_token"] = state.metadata["supabase_jwt_token"]
+        logger.debug(f"Added Supabase JWT token to tool parameters for {tool_name}")
+    
     # Apply step params for non-critical fields only
     for key, value in (step_params or {}).items():
         if key == "user_id":
@@ -225,7 +232,8 @@ async def _execute_single_step(
 # Temporarily disabled - financial service not available
 # async def _execute_with_transaction(
 #     steps: List[Dict[str, Any]], 
-#     extracted_params: Dict[str, Any] ) -> Tuple[List[ExecutionStepResult], List[str]]:
+#     extracted_params: Dict[str, Any],
+#     state: Any = None ) -> Tuple[List[ExecutionStepResult], List[str]]:
 #     """
 #     Execute multiple steps within a database transaction.
 #     
@@ -274,13 +282,15 @@ async def _execute_single_step(
 
 async def _execute_without_transaction(
     steps: List[Dict[str, Any]], 
-    extracted_params: Dict[str, Any] ) -> Tuple[List[ExecutionStepResult], List[str]]:
+    extracted_params: Dict[str, Any],
+    state: Any = None ) -> Tuple[List[ExecutionStepResult], List[str]]:
     """
     Execute steps without database transaction (single step or read-only operations).
     
     Args:
         steps: List of steps to execute
         extracted_params: Parameters extracted from user intent
+        state: Current state object for accessing metadata (e.g., Supabase JWT token)
         
     Returns:
         Tuple of (results, errors)
@@ -289,7 +299,7 @@ async def _execute_without_transaction(
     errors = []
     
     for i, step in enumerate(steps):
-        result = await _execute_single_step(step, i, extracted_params)
+        result = await _execute_single_step(step, i, extracted_params, state)
         results.append(result)
         
         if not result.success:
@@ -406,9 +416,9 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         
         # Execute steps with safe parameters
         if execution_strategy == "transaction":
-            results, errors = await _execute_with_transaction(steps, base_extracted_params)
+            results, errors = await _execute_with_transaction(steps, base_extracted_params, state)
         else:
-            results, errors = await _execute_without_transaction(steps, base_extracted_params)
+            results, errors = await _execute_without_transaction(steps, base_extracted_params, state)
         
         # Calculate execution statistics
         total_execution_time = (time.time() - execution_start) * 1000

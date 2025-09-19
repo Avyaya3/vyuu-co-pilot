@@ -1992,3 +1992,163 @@ class DbQueryTool:
             "stock_summary": stock_summary.get("summary", {}),
             "insurance_summary": insurance_summary.get("summary", {})
         }
+
+    async def invoke(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the database query tool with the given parameters.
+        
+        This method implements the ToolInterface protocol and handles
+        Supabase JWT token authentication for MCP calls.
+        
+        Args:
+            params: Dictionary of parameters including:
+                - operation: The database operation to perform
+                - user_id: User ID for the query
+                - supabase_jwt_token: Optional Supabase JWT token for MCP authentication
+                - Other operation-specific parameters
+                
+        Returns:
+            Standardized ToolResponse dictionary
+        """
+        start_time = time.time()
+        
+        try:
+            # Extract Supabase JWT token from params (passed from state metadata)
+            supabase_jwt_token = params.pop("supabase_jwt_token", None)
+            
+            # Validate parameters
+            validated_params = self.schema(**params)
+            
+            # Execute the operation
+            result_data = await self._execute_operation(validated_params, supabase_jwt_token)
+            
+            execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+            return {
+                "success": True,
+                "data": result_data,
+                "error": None,
+                "tool_name": self.name,
+                "execution_time_ms": execution_time
+            }
+            
+        except Exception as e:
+            execution_time = (time.time() - start_time) * 1000
+            logger.error(f"Database query tool execution failed: {e}")
+            
+            return {
+                "success": False,
+                "data": None,
+                "error": str(e),
+                "tool_name": self.name,
+                "execution_time_ms": execution_time
+            }
+    
+    async def _execute_operation(self, params: DbQueryParams, supabase_jwt_token: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Execute the specific database operation.
+        
+        Args:
+            params: Validated parameters for the operation
+            supabase_jwt_token: Optional Supabase JWT token for MCP authentication
+            
+        Returns:
+            Operation result data
+        """
+        # If we have a Supabase JWT token, we can use MCP for the operation
+        if supabase_jwt_token:
+            return await self._execute_with_mcp(params, supabase_jwt_token)
+        else:
+            # Fall back to repository-based execution
+            return await self._execute_with_repository(params)
+    
+    async def _execute_with_mcp(self, params: DbQueryParams, supabase_jwt_token: str) -> Dict[str, Any]:
+        """
+        Execute the operation using Supabase MCP with JWT authentication.
+        
+        Args:
+            params: Validated parameters for the operation
+            supabase_jwt_token: Supabase JWT token for authentication
+            
+        Returns:
+            Operation result data
+        """
+        # TODO: Implement MCP-based execution with Supabase JWT token
+        # This would involve calling the Supabase MCP with the JWT token in the Authorization header
+        # For now, fall back to repository-based execution
+        logger.info(f"Executing {params.operation} with Supabase JWT token for user {params.user_id}")
+        return await self._execute_with_repository(params)
+    
+    async def _execute_with_repository(self, params: DbQueryParams) -> Dict[str, Any]:
+        """
+        Execute the operation using the repository layer (fallback).
+        
+        Args:
+            params: Validated parameters for the operation
+            
+        Returns:
+            Operation result data
+        """
+        # Route to the appropriate operation handler
+        operation_handlers = {
+            # Asset operations
+            "get_user_assets": self._get_user_assets,
+            "get_asset_by_id": self._get_asset_by_id,
+            "get_asset_summary": self._get_asset_summary,
+            "get_assets_by_category": self._get_assets_by_category,
+            
+            # Liability operations
+            "get_user_liabilities": self._get_user_liabilities,
+            "get_liability_by_id": self._get_liability_by_id,
+            "get_liability_summary": self._get_liability_summary,
+            "get_liabilities_by_type": self._get_liabilities_by_type,
+            
+            # Savings operations
+            "get_user_savings": self._get_user_savings,
+            "get_savings_by_id": self._get_savings_by_id,
+            "get_savings_summary": self._get_savings_summary,
+            "get_savings_by_type": self._get_savings_by_type,
+            
+            # Income operations
+            "get_user_incomes": self._get_user_incomes,
+            "get_income_by_id": self._get_income_by_id,
+            "get_income_summary": self._get_income_summary,
+            "get_incomes_by_category": self._get_incomes_by_category,
+            "get_incomes_by_frequency": self._get_incomes_by_frequency,
+            
+            # Expense operations
+            "get_user_expenses": self._get_user_expenses,
+            "get_expense_by_id": self._get_expense_by_id,
+            "get_expense_summary": self._get_expense_summary,
+            "get_expenses_by_category": self._get_expenses_by_category,
+            "get_expenses_by_subcategory": self._get_expenses_by_subcategory,
+            "get_expenses_by_payment_method": self._get_expenses_by_payment_method,
+            
+            # Stock operations
+            "get_user_stocks": self._get_user_stocks,
+            "get_stock_by_id": self._get_stock_by_id,
+            "get_stock_summary": self._get_stock_summary,
+            "get_stocks_by_type": self._get_stocks_by_type,
+            
+            # Insurance operations
+            "get_user_insurances": self._get_user_insurances,
+            "get_insurance_by_id": self._get_insurance_by_id,
+            "get_insurance_summary": self._get_insurance_summary,
+            "get_insurances_by_type": self._get_insurances_by_type,
+            "get_insurances_by_provider": self._get_insurances_by_provider,
+            
+            # Goal operations
+            "get_user_goals": self._get_user_goals,
+            "get_goal_by_id": self._get_goal_by_id,
+            "get_goals_by_category": self._get_goals_by_category,
+            "get_goals_by_priority": self._get_goals_by_priority,
+            
+            # Financial summary
+            "get_financial_summary": self._get_financial_summary
+        }
+        
+        handler = operation_handlers.get(params.operation)
+        if not handler:
+            raise ValueError(f"Unsupported operation: {params.operation}")
+        
+        return await handler(params)

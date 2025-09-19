@@ -131,19 +131,25 @@ class MainOrchestrator:
         Initialize the MainOrchestrator.
         
         Args:
-            use_database: Whether to use database session management (Phase 2)
+            use_database: Whether to use database session management
         """
         self.graph = main_orchestrator_graph
         self.use_database = use_database
         
-        # Initialize session manager (in-memory for Phase 1)
+        # Initialize session manager
         if use_database:
-            # TODO: Implement database session manager in Phase 2
-            raise NotImplementedError("Database session management not yet implemented")
+            try:
+                from src.utils.database_session_manager import DatabaseSessionManager
+                self.session_manager = DatabaseSessionManager(session_expiry_hours=24)
+                logger.info("[MainOrchestrator] Initialized with database session management")
+            except Exception as e:
+                logger.error(f"[MainOrchestrator] Failed to initialize database session manager: {e}")
+                logger.warning("[MainOrchestrator] Falling back to in-memory session management")
+                self.session_manager = SessionManager()
+                self.use_database = False
         else:
             self.session_manager = SessionManager()
-        
-        logger.info(f"[MainOrchestrator] Initialized with {'database' if use_database else 'in-memory'} session management")
+            logger.info("[MainOrchestrator] Initialized with in-memory session management")
     
     async def process_user_message(
         self,
@@ -184,6 +190,18 @@ class MainOrchestrator:
                 session_id=session_id,
                 conversation_history=conversation_history
             )
+            
+            # Add Supabase JWT token for MCP calls if user_id is available
+            if user_id:
+                try:
+                    from src.utils.auth import get_auth_manager
+                    auth_manager = get_auth_manager()
+                    supabase_jwt = auth_manager.get_supabase_jwt_for_mcp(user_id)
+                    state.metadata["supabase_jwt_token"] = supabase_jwt
+                    logger.debug(f"[MainOrchestrator] Added Supabase JWT token for MCP calls for user {user_id}")
+                except Exception as e:
+                    logger.warning(f"[MainOrchestrator] Failed to create Supabase JWT token for user {user_id}: {e}")
+                    # Continue without Supabase JWT - MCP tools will need to handle this gracefully
             
             # Check if this is a response to a clarification question
             if self._is_clarification_response(state, user_input):
@@ -410,7 +428,7 @@ class MainOrchestrator:
     
     async def cleanup_sessions(self, max_age_hours: int = 24) -> int:
         """
-        Clean up old sessions from memory.
+        Clean up old sessions.
         
         Args:
             max_age_hours: Maximum age of sessions to keep
@@ -418,9 +436,109 @@ class MainOrchestrator:
         Returns:
             Number of sessions cleaned up
         """
-        # TODO: Implement session cleanup based on age
-        logger.info("[MainOrchestrator] Session cleanup not yet implemented for in-memory storage")
-        return 0
+        if self.use_database:
+            # Convert hours to days for database cleanup
+            max_age_days = max_age_hours // 24
+            return self.session_manager.cleanup_old_sessions(max_age_days)
+        else:
+            # TODO: Implement session cleanup based on age for in-memory storage
+            logger.info("[MainOrchestrator] Session cleanup not yet implemented for in-memory storage")
+            return 0
+    
+    def get_user_sessions(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get sessions for a specific user.
+        
+        Args:
+            user_id: User ID to query sessions for
+            limit: Maximum number of sessions to return
+            
+        Returns:
+            List of session information dictionaries
+        """
+        if self.use_database:
+            return self.session_manager.get_user_sessions(user_id, limit)
+        else:
+            # For in-memory storage, filter sessions by user_id
+            sessions = []
+            for session_id, metadata in self.session_manager._session_metadata.items():
+                if metadata.get("user_id") == user_id:
+                    session_state = self.session_manager.load_session_state(session_id)
+                    if session_state:
+                        sessions.append({
+                            "session_id": session_id,
+                            "created_at": metadata.get("created_at"),
+                            "last_updated": metadata.get("last_updated"),
+                            "message_count": metadata.get("message_count", 0),
+                            "last_intent": session_state.intent.value if session_state.intent else None,
+                            "last_confidence": session_state.confidence,
+                            "is_active": True
+                        })
+            
+            # Sort by last_updated descending and limit
+            sessions.sort(key=lambda x: x.get("last_updated", datetime.min), reverse=True)
+            return sessions[:limit]
+    
+    def cleanup_user_sessions(self, user_id: str, keep_recent: int = 10) -> int:
+        """
+        Clean up old sessions for a specific user, keeping only the most recent ones.
+        
+        Args:
+            user_id: User ID to clean up sessions for
+            keep_recent: Number of recent sessions to keep
+            
+        Returns:
+            Number of sessions cleaned up
+        """
+        if self.use_database:
+            # Get user sessions
+            user_sessions = self.get_user_sessions(user_id, limit=1000)  # Get all sessions
+            
+            if len(user_sessions) <= keep_recent:
+                return 0  # No cleanup needed
+            
+            # Sort by last_updated and get sessions to delete
+            user_sessions.sort(key=lambda x: x.get("last_updated", datetime.min), reverse=True)
+            sessions_to_delete = user_sessions[keep_recent:]
+            
+            # Delete old sessions
+            deleted_count = 0
+            for session_info in sessions_to_delete:
+                if self.delete_session(session_info["session_id"]):
+                    deleted_count += 1
+            
+            logger.info(f"[MainOrchestrator] Cleaned up {deleted_count} old sessions for user {user_id}")
+            return deleted_count
+        else:
+            # For in-memory storage, implement similar logic
+            user_sessions = self.get_user_sessions(user_id, limit=1000)
+            
+            if len(user_sessions) <= keep_recent:
+                return 0
+            
+            # Sort and delete old sessions
+            user_sessions.sort(key=lambda x: x.get("last_updated", datetime.min), reverse=True)
+            sessions_to_delete = user_sessions[keep_recent:]
+            
+            deleted_count = 0
+            for session_info in sessions_to_delete:
+                if self.delete_session(session_info["session_id"]):
+                    deleted_count += 1
+            
+            logger.info(f"[MainOrchestrator] Cleaned up {deleted_count} old sessions for user {user_id}")
+            return deleted_count
+    
+    def delete_session(self, session_id: str) -> bool:
+        """
+        Delete a specific session.
+        
+        Args:
+            session_id: Session ID to delete
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.session_manager.delete_session(session_id)
 
     def _is_clarification_response(self, state: MainState, user_input: str) -> bool:
         """

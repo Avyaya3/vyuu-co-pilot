@@ -5,7 +5,7 @@ This module handles all configuration settings including Supabase connection,
 database settings, and application configuration using Pydantic settings.
 """
 
-from typing import Optional, Annotated
+from typing import Optional, Annotated, List
 from pydantic_settings import BaseSettings
 from pydantic import validator, Field
 import os
@@ -35,6 +35,28 @@ class SupabaseConfig(BaseSettings):
         """Validate Supabase URL format."""
         if not v.startswith("https://") or "supabase.co" not in v:
             raise ValueError("Invalid Supabase URL format")
+        return v
+
+
+class CustomJWTConfig(BaseSettings):
+    """Custom JWT token configuration for NextJS integration."""
+    
+    secret: str = Field(..., description="Secret key for signing/verifying custom JWT tokens")
+    issuer: Optional[str] = Field(None, description="Expected token issuer")
+    audience: Optional[str] = Field(None, description="Expected token audience")
+    algorithm: str = Field("HS256", description="JWT signing algorithm")
+    expiration_hours: int = Field(24, description="Token expiration time in hours")
+    
+    class Config:
+        env_prefix = "CUSTOM_JWT_"
+        case_sensitive = False
+        extra = "ignore"
+    
+    @validator("secret")
+    def validate_secret(cls, v: str) -> str:
+        """Validate JWT secret is not empty."""
+        if not v or len(v) < 16:
+            raise ValueError("JWT secret must be at least 16 characters long")
         return v
 
 
@@ -87,6 +109,7 @@ class APIConfig(BaseSettings):
     port: int = 8000
     environment: str = "development"
     debug: bool = True
+    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     
     class Config:
         env_prefix = "API_"
@@ -118,6 +141,7 @@ class AppConfig(BaseSettings):
     auth: AuthConfig
     api: APIConfig
     logging: LoggingConfig
+    custom_jwt: CustomJWTConfig
     
     def __init__(self, **kwargs):
         # Initialize sub-configurations
@@ -126,6 +150,7 @@ class AppConfig(BaseSettings):
         auth_config = AuthConfig()
         api_config = APIConfig()
         logging_config = LoggingConfig()
+        custom_jwt_config = CustomJWTConfig()
         
         super().__init__(
             supabase=supabase_config,
@@ -133,6 +158,7 @@ class AppConfig(BaseSettings):
             auth=auth_config,
             api=api_config,
             logging=logging_config,
+            custom_jwt=custom_jwt_config,
             **kwargs
         )
     
