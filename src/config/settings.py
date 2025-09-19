@@ -18,9 +18,9 @@ load_dotenv()
 class SupabaseConfig(BaseSettings):
     """Supabase-specific configuration settings."""
     
-    url: str
-    key: str
-    service_role_key: str
+    url: str = "https://placeholder.supabase.co"
+    key: str = "placeholder_key"
+    service_role_key: str = "placeholder_service_role_key"
     timeout: int = 30
     max_retries: int = 3
     retry_delay: int = 1
@@ -41,7 +41,7 @@ class SupabaseConfig(BaseSettings):
 class CustomJWTConfig(BaseSettings):
     """Custom JWT token configuration for NextJS integration."""
     
-    secret: str = Field(..., description="Secret key for signing/verifying custom JWT tokens")
+    secret: str = Field("your-custom-jwt-secret-key-here", description="Secret key for signing/verifying custom JWT tokens")
     issuer: Optional[str] = Field(None, description="Expected token issuer")
     audience: Optional[str] = Field(None, description="Expected token audience")
     algorithm: str = Field("HS256", description="JWT signing algorithm")
@@ -63,7 +63,7 @@ class CustomJWTConfig(BaseSettings):
 class DatabaseConfig(BaseSettings):
     """Database connection configuration."""
     
-    url: str = Field(..., alias='DATABASE_URL')  # Map to DATABASE_URL env var
+    url: str = Field("postgresql://placeholder:placeholder@localhost:5432/placeholder", alias='DATABASE_URL')  # Map to DATABASE_URL env var
     pool_size: int = 10
     max_overflow: int = 20
     pool_timeout: int = 30
@@ -85,7 +85,7 @@ class DatabaseConfig(BaseSettings):
 class AuthConfig(BaseSettings):
     """Authentication configuration."""
     
-    jwt_secret_key: str
+    jwt_secret_key: str = "your-jwt-secret-key-here"
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
     

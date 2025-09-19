@@ -6,6 +6,7 @@ This module provides REST API endpoints for chatbot UI integration.
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from uuid import uuid4
 
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Vyuu Copilot v2 API server...")
     try:
         config = get_config()
-        orchestrator = MainOrchestrator(use_database=True)
+        orchestrator = MainOrchestrator(use_database=False)
         logger.info("Orchestrator initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize orchestrator: {e}")
@@ -83,7 +84,12 @@ class ChatRequest(BaseModel):
         default_factory=list, 
         description="Previous conversation messages"
     )
-    user_id: Optional[str] = Field(None, description="User ID for personalization")
+    user_id: Optional[str] = Field(None, description="User ID for personalization", alias="userId")
+    financial_data: Optional[Dict[str, Any]] = Field(
+        None, 
+        description="Financial data from NextJS for schema-based extraction",
+        alias="financialData"
+    )
     
     @validator("message")
     def validate_message(cls, v: str) -> str:
@@ -284,12 +290,23 @@ async def chat_endpoint(
         
         logger.info(f"Processing chat request for session {session_id[:8]}...")
         
+        # Log the incoming request for debugging
+        logger.info(f"Request details - Message: {request.message[:100]}...")
+        logger.info(f"Request details - Session ID: {request.session_id}")
+        logger.info(f"Request details - User ID: {user_id}")
+        logger.info(f"Request details - Financial data present: {request.financial_data is not None}")
+        if request.financial_data:
+            logger.info(f"Request details - Financial data keys: {list(request.financial_data.keys())}")
+        else:
+            logger.warning("Request details - No financial data provided in request!")
+        
         # Process the message through the orchestrator
         result = await orchestrator.process_user_message(
             user_input=request.message,
             user_id=user_id,
             session_id=session_id,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            financial_data=request.financial_data
         )
         
         # Calculate processing time
@@ -299,10 +316,15 @@ async def chat_endpoint(
         response_history = []
         if result.get("conversation_history"):
             for msg in result["conversation_history"]:
+                timestamp = msg.get("timestamp")
+                # Convert datetime to ISO string if needed
+                if isinstance(timestamp, datetime):
+                    timestamp = timestamp.isoformat()
+                
                 response_history.append(ChatMessage(
                     role=msg.get("role", "user"),
                     content=msg.get("content", ""),
-                    timestamp=msg.get("timestamp")
+                    timestamp=timestamp
                 ))
         
         # Add the assistant's response to history
@@ -342,10 +364,22 @@ async def chat_endpoint(
         )
 
 
+class SimpleChatRequest(BaseModel):
+    """Simple chat request model."""
+    message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    session_id: Optional[str] = Field(None, description="Session ID for conversation continuity")
+    
+    @validator("message")
+    def validate_message(cls, v: str) -> str:
+        """Validate message content."""
+        if not v.strip():
+            raise ValueError("Message cannot be empty")
+        return v.strip()
+
+
 @app.post("/chat/simple", response_model=Dict[str, Any])
 async def simple_chat_endpoint(
-    message: str = Field(..., min_length=1, max_length=2000),
-    session_id: Optional[str] = None,
+    request: SimpleChatRequest,
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
 ):
     """
@@ -356,8 +390,8 @@ async def simple_chat_endpoint(
     """
     # Create a ChatRequest from the simple parameters
     chat_request = ChatRequest(
-        message=message,
-        session_id=session_id,
+        message=request.message,
+        session_id=request.session_id,
         user_id=current_user.get("user_id") if current_user else None
     )
     
@@ -405,10 +439,15 @@ async def get_session_history(
         history = []
         if session_state.get("conversation_history"):
             for msg in session_state["conversation_history"]:
+                timestamp = msg.get("timestamp")
+                # Convert datetime to ISO string if needed
+                if isinstance(timestamp, datetime):
+                    timestamp = timestamp.isoformat()
+                
                 history.append(ChatMessage(
                     role=msg.get("role", "user"),
                     content=msg.get("content", ""),
-                    timestamp=msg.get("timestamp")
+                    timestamp=timestamp
                 ))
         
         return history

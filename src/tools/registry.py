@@ -7,20 +7,20 @@ and their schemas for the execution planning node.
 
 from typing import Dict, Type
 from .base import ToolInterface
-from .db_query import DbQueryTool
+from .data_fetch import DataFetchTool
 from .db_aggregate import DbAggregateTool
 from .db_action import DbActionTool
 
 
 # Initialize tool instances
-_db_query_tool = DbQueryTool()
+_data_fetch_tool = DataFetchTool()
 _db_aggregate_tool = DbAggregateTool()
 _db_action_tool = DbActionTool()
 
 
 # Tool registry mapping tool names to tool instances
 TOOL_REGISTRY: Dict[str, ToolInterface] = {
-    "db_query": _db_query_tool,
+    "data_fetch": _data_fetch_tool,
     "db_aggregate": _db_aggregate_tool,
     "db_action": _db_action_tool,
 }
@@ -28,7 +28,7 @@ TOOL_REGISTRY: Dict[str, ToolInterface] = {
 
 # Schema registry for quick access to tool schemas
 TOOL_SCHEMAS: Dict[str, Type] = {
-    "db_query": _db_query_tool.schema,
+    "data_fetch": _data_fetch_tool.schema,
     "db_aggregate": _db_aggregate_tool.schema,
     "db_action": _db_action_tool.schema,
 }
@@ -92,28 +92,14 @@ def get_tool_info() -> Dict[str, Dict[str, str]]:
         Dictionary with tool names as keys and info dictionaries as values
     """
     return {
-        "db_query": {
-            "name": "db_query",
-            "description": "Read-only database operations for financial data",
+        "data_fetch": {
+            "name": "data_fetch",
+            "description": "Schema-based data extraction for financial data from request payload",
             "operations": [
-                # Asset operations
-                "get_user_assets", "get_asset_by_id", "get_asset_summary", "get_assets_by_category",
-                # Liability operations
-                "get_user_liabilities", "get_liability_by_id", "get_liability_summary", "get_liabilities_by_type",
-                # Savings operations
-                "get_user_savings", "get_savings_by_id", "get_savings_summary", "get_savings_by_type",
-                # Income operations
-                "get_user_incomes", "get_income_by_id", "get_income_summary", "get_incomes_by_category", "get_incomes_by_frequency",
-                # Expense operations
-                "get_user_expenses", "get_expense_by_id", "get_expense_summary", "get_expenses_by_category", "get_expenses_by_subcategory", "get_expenses_by_payment_method",
-                # Stock operations
-                "get_user_stocks", "get_stock_by_id", "get_stock_summary", "get_stocks_by_type",
-                # Insurance operations
-                "get_user_insurances", "get_insurance_by_id", "get_insurance_summary", "get_insurances_by_type", "get_insurances_by_provider",
-                # Goal operations
-                "get_user_goals", "get_goal_by_id", "get_goals_by_category", "get_goals_by_priority",
-                # Financial summary
-                "get_financial_summary"
+                # Basic data retrieval operations
+                "get_assets", "get_liabilities", "get_savings", "get_income", 
+                "get_expenses", "get_stocks", "get_insurance", "get_goals",
+                "get_net_worth", "get_dashboard_metrics", "get_user_info"
             ]
         },
         "db_aggregate": {

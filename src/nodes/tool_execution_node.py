@@ -128,6 +128,26 @@ async def _execute_single_step(
         merged_params["supabase_jwt_token"] = state.metadata["supabase_jwt_token"]
         logger.debug(f"Added Supabase JWT token to tool parameters for {tool_name}")
     
+    # Add financial data from state metadata if available
+    if state and hasattr(state, 'metadata') and state.metadata and 'financial_data' in state.metadata:
+        financial_data_from_state = state.metadata["financial_data"]
+        logger.info(f"Financial data from state metadata: {repr(financial_data_from_state)}")
+        logger.info(f"Financial data type from state: {type(financial_data_from_state)}")
+        
+        merged_params["financial_data"] = financial_data_from_state
+        logger.info(f"Added financial data to tool parameters for {tool_name}")
+        
+        if financial_data_from_state and isinstance(financial_data_from_state, dict):
+            logger.info(f"Financial data keys in tool params: {list(financial_data_from_state.keys())}")
+        else:
+            logger.warning(f"Financial data is not a valid dict: {repr(financial_data_from_state)}")
+    else:
+        logger.warning(f"No financial data found in state metadata for {tool_name}")
+        if state and hasattr(state, 'metadata') and state.metadata:
+            logger.info(f"Available metadata keys: {list(state.metadata.keys())}")
+        else:
+            logger.warning("No state metadata available")
+    
     # Apply step params for non-critical fields only
     for key, value in (step_params or {}).items():
         if key == "user_id":
@@ -135,14 +155,30 @@ async def _execute_single_step(
             # Prefer the extracted user_id if available; otherwise accept provided value
             if "user_id" not in merged_params or not merged_params["user_id"]:
                 merged_params["user_id"] = value
+        elif key == "financial_data":
+            # Protect financial_data from being overridden by step params
+            logger.warning(f"Step params trying to override financial_data with: {repr(value)}")
+            logger.warning("Ignoring step param financial_data to preserve state metadata")
+            # Don't override financial_data from state metadata
+            continue
         else:
             merged_params[key] = value
     
     # Validate parameters against tool schema
     try:
         tool_schema = get_tool_schema(tool_name)
-        validated_params = tool_schema(**merged_params)
+        
+        # Separate financial_data for preservation
+        financial_data_backup = merged_params.get("financial_data")
+        params_for_validation = {k: v for k, v in merged_params.items() if k != "financial_data"}
+        
+        validated_params = tool_schema(**params_for_validation)
         final_params = validated_params.model_dump()
+        
+        # Restore financial_data after validation
+        if financial_data_backup is not None:
+            final_params["financial_data"] = financial_data_backup
+            logger.info(f"Tool execution debug - Preserved financial_data after validation")
         
         # Debug logging for final parameters
         logger.info(f"Tool execution debug - final_params user_id: {final_params.get('user_id')}")
@@ -170,6 +206,13 @@ async def _execute_single_step(
             )
             
             # Call tool
+            logger.info(f"Tool execution debug - About to invoke tool with params: {list(final_params.keys())}")
+            logger.info(f"Tool execution debug - financial_data in final_params: {'financial_data' in final_params}")
+            if 'financial_data' in final_params:
+                fd = final_params['financial_data']
+                logger.info(f"Tool execution debug - financial_data value before invoke: {repr(fd)}")
+                logger.info(f"Tool execution debug - financial_data type before invoke: {type(fd)}")
+            
             response_dict = await tool.invoke(final_params)
             
             # Validate response format

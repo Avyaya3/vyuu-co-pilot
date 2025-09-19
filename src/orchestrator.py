@@ -156,7 +156,8 @@ class MainOrchestrator:
         user_input: str,
         user_id: str = None,
         session_id: str = None,
-        conversation_history: List[Dict] = None ) -> Dict[str, Any]:
+        conversation_history: List[Dict] = None,
+        financial_data: Dict[str, Any] = None ) -> Dict[str, Any]:
         """
         Main API endpoint for processing user messages.
         
@@ -182,13 +183,19 @@ class MainOrchestrator:
         
         try:
             logger.info(f"[MainOrchestrator] Processing user message - Session: {session_id[:8] if session_id else 'new'}, User: {user_id or 'anonymous'}")
+            logger.info(f"[MainOrchestrator] Financial data present: {financial_data is not None}")
+            if financial_data:
+                logger.info(f"[MainOrchestrator] Financial data keys: {list(financial_data.keys())}")
+            else:
+                logger.warning("[MainOrchestrator] No financial data provided!")
             
             # Load or create session state
             state = await self._prepare_session_state(
                 user_input=user_input,
                 user_id=user_id,
                 session_id=session_id,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                financial_data=financial_data
             )
             
             # Add Supabase JWT token for MCP calls if user_id is available
@@ -210,6 +217,8 @@ class MainOrchestrator:
             
             # Process through main graph
             logger.info(f"[MainOrchestrator] Executing main graph for session {state.session_id[:8]}")
+            logger.info(f"[MainOrchestrator] State metadata before graph execution: {list(state.metadata.keys())}")
+            logger.info(f"[MainOrchestrator] Financial data in state before graph execution: {'financial_data' in state.metadata}")
             raw_result = await self.graph.ainvoke(state)
             
             # Convert result to proper MainState if it's an AddableValuesDict
@@ -271,7 +280,8 @@ class MainOrchestrator:
         user_input: str,
         user_id: str = None,
         session_id: str = None,
-        conversation_history: List[Dict] = None ) -> MainState:
+        conversation_history: List[Dict] = None,
+        financial_data: Dict[str, Any] = None ) -> MainState:
         """
         Prepare the session state for graph processing.
         
@@ -290,13 +300,21 @@ class MainOrchestrator:
             if existing_state:
                 # Update existing session with new user input
                 logger.debug(f"[MainOrchestrator] Loaded existing session {session_id[:8]}")
+                
+                # Update metadata with new financial data if provided
+                updated_metadata = {
+                    **existing_state.metadata,
+                    "turn_count": existing_state.metadata.get("turn_count", 0) + 1
+                }
+                
+                if financial_data:
+                    updated_metadata["financial_data"] = financial_data
+                    logger.debug(f"[MainOrchestrator] Updated financial data in existing session")
+                
                 return existing_state.model_copy(update={
                     "user_input": user_input,
                     "timestamp": datetime.now(timezone.utc),
-                    "metadata": {
-                        **existing_state.metadata,
-                        "turn_count": existing_state.metadata.get("turn_count", 0) + 1
-                    }
+                    "metadata": updated_metadata
                 })
             else:
                 logger.warning(f"[MainOrchestrator] Session {session_id[:8]} not found, creating new session")
@@ -319,17 +337,27 @@ class MainOrchestrator:
                     ))
         
         # Create new MainState
+        metadata = {
+            "user_id": user_id,
+            "session_created": datetime.now(timezone.utc).isoformat(),
+            "turn_count": 1,
+            "orchestrator_version": "1.0.0"
+        }
+        
+        # Add financial data to metadata if provided
+        if financial_data:
+            metadata["financial_data"] = financial_data
+            logger.info(f"[MainOrchestrator] Added financial data to session metadata")
+            logger.info(f"[MainOrchestrator] Financial data keys: {list(financial_data.keys())}")
+        else:
+            logger.warning("[MainOrchestrator] No financial data to add to metadata")
+        
         state = MainState(
             user_input=user_input,
             session_id=session_id,
             timestamp=datetime.now(timezone.utc),
             messages=messages,
-            metadata={
-                "user_id": user_id,
-                "session_created": datetime.now(timezone.utc).isoformat(),
-                "turn_count": 1,
-                "orchestrator_version": "1.0.0"
-            }
+            metadata=metadata
         )
         
         logger.info(f"[MainOrchestrator] Created new session {session_id[:8]} for user {user_id or 'anonymous'}")
