@@ -15,6 +15,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .base import ToolResponse, ToolInterface
+from vyuu_copilot_v2.utils.database import get_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +104,9 @@ class DatabaseOperationsTool:
     def __init__(self):
         """Initialize the database operations tool."""
         self.logger = logging.getLogger(__name__)
+        self.db_client = get_db_client()
     
-    async def invoke(self, params: Dict[str, Any]) -> ToolResponse:
+    async def invoke(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute database operation with the given parameters.
         
@@ -112,7 +114,7 @@ class DatabaseOperationsTool:
             params: Dictionary of parameters matching DatabaseOperationsParams schema
             
         Returns:
-            ToolResponse with operation result
+            Dictionary with operation result
         """
         start_time = time.time()
         
@@ -135,101 +137,300 @@ class DatabaseOperationsTool:
             
             execution_time = (time.time() - start_time) * 1000
             
-            return ToolResponse(
-                success=True,
-                data=result,
-                tool_name=self.name,
-                execution_time_ms=execution_time
-            )
+            return {
+                "success": True,
+                "data": result,
+                "tool_name": self.name,
+                "execution_time_ms": execution_time
+            }
             
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
             self.logger.error(f"Database operation failed: {e}")
             
-            return ToolResponse(
-                success=False,
-                error=str(e),
-                tool_name=self.name,
-                execution_time_ms=execution_time
-            )
+            return {
+                "success": False,
+                "error": str(e),
+                "tool_name": self.name,
+                "execution_time_ms": execution_time
+            }
     
     async def _create_entity(self, params: DatabaseOperationsParams) -> Dict[str, Any]:
         """Create a new entity in the database."""
-        # TODO: Implement Supabase MCP create operation
-        # This will use the Supabase MCP to insert a new record
-        # based on the entity_type and provided parameters
-        
         entity_data = self._build_entity_data(params)
         
-        # Placeholder for actual MCP call
-        self.logger.info(f"Creating {params.entity_type} entity: {entity_data}")
+        # Generate a unique ID
+        import uuid
+        entity_data["id"] = str(uuid.uuid4())
         
-        return {
-            "action": "create",
-            "entity_type": params.entity_type,
-            "entity_data": entity_data,
-            "message": f"Successfully created {params.entity_type} entity"
-        }
+        # Add user_id to entity data
+        if params.user_id:
+            entity_data["userId"] = params.user_id
+        
+        # Add timestamps
+        now = datetime.now()
+        entity_data["createdAt"] = now
+        entity_data["updatedAt"] = now
+        
+        # Build INSERT query
+        table_name = self._get_table_name(params.entity_type)
+        columns = list(entity_data.keys())
+        # Quote column names to preserve camelCase
+        quoted_columns = [f'"{col}"' for col in columns]
+        placeholders = [f"${i+1}" for i in range(len(columns))]
+        values = list(entity_data.values())
+        
+        query = f"""
+            INSERT INTO {table_name} ({', '.join(quoted_columns)})
+            VALUES ({', '.join(placeholders)})
+            RETURNING id, "createdAt"
+        """
+        
+        try:
+            # Execute the insert query
+            result = await self.db_client.execute_query(query, *values, fetch_one=True)
+            
+            if result:
+                self.logger.info(f"Successfully created {params.entity_type} entity with ID: {result['id']}")
+                return {
+                    "action": "create",
+                    "entity_type": params.entity_type,
+                    "entity_id": result["id"],
+                    "entity_data": entity_data,
+                    "created_at": result["createdAt"],
+                    "message": f"Successfully created {params.entity_type} entity with ID {result['id']}"
+                }
+            else:
+                raise Exception("Insert operation returned no result")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create {params.entity_type} entity: {e}")
+            raise Exception(f"Failed to create {params.entity_type} entity: {str(e)}")
     
     async def _update_entity(self, params: DatabaseOperationsParams) -> Dict[str, Any]:
         """Update an existing entity in the database."""
         if not params.entity_id:
             raise ValueError("entity_id is required for update operations")
         
-        # TODO: Implement Supabase MCP update operation
         entity_data = self._build_entity_data(params)
         
-        # Placeholder for actual MCP call
-        self.logger.info(f"Updating {params.entity_type} entity {params.entity_id}: {entity_data}")
+        # Add updated timestamp
+        entity_data["updatedAt"] = datetime.now()
         
-        return {
-            "action": "update",
-            "entity_type": params.entity_type,
-            "entity_id": params.entity_id,
-            "entity_data": entity_data,
-            "message": f"Successfully updated {params.entity_type} entity {params.entity_id}"
-        }
+        # Build UPDATE query
+        table_name = self._get_table_name(params.entity_type)
+        set_clauses = []
+        values = []
+        
+        for i, (key, value) in enumerate(entity_data.items()):
+            set_clauses.append(f'"{key}" = ${i+1}')
+            values.append(value)
+        
+        # Add entity_id as the last parameter
+        values.append(params.entity_id)
+        
+        query = f"""
+            UPDATE {table_name}
+            SET {', '.join(set_clauses)}
+            WHERE id = ${len(values)}
+            RETURNING id, "updatedAt"
+        """
+        
+        try:
+            # Execute the update query
+            result = await self.db_client.execute_query(query, *values, fetch_one=True)
+            
+            if result:
+                self.logger.info(f"Successfully updated {params.entity_type} entity {params.entity_id}")
+                return {
+                    "action": "update",
+                    "entity_type": params.entity_type,
+                    "entity_id": params.entity_id,
+                    "entity_data": entity_data,
+                    "updated_at": result["updatedAt"],
+                    "message": f"Successfully updated {params.entity_type} entity {params.entity_id}"
+                }
+            else:
+                raise Exception(f"Entity with ID {params.entity_id} not found or no changes made")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to update {params.entity_type} entity {params.entity_id}: {e}")
+            raise Exception(f"Failed to update {params.entity_type} entity {params.entity_id}: {str(e)}")
     
     async def _delete_entity(self, params: DatabaseOperationsParams) -> Dict[str, Any]:
         """Delete an entity from the database."""
         if not params.entity_id:
             raise ValueError("entity_id is required for delete operations")
         
-        # TODO: Implement Supabase MCP delete operation
-        self.logger.info(f"Deleting {params.entity_type} entity {params.entity_id}")
+        table_name = self._get_table_name(params.entity_type)
         
-        return {
-            "action": "delete",
-            "entity_type": params.entity_type,
-            "entity_id": params.entity_id,
-            "message": f"Successfully deleted {params.entity_type} entity {params.entity_id}"
-        }
+        query = f"""
+            DELETE FROM {table_name}
+            WHERE id = $1
+            RETURNING id
+        """
+        
+        try:
+            # Execute the delete query
+            result = await self.db_client.execute_query(query, params.entity_id, fetch_one=True)
+            
+            if result:
+                self.logger.info(f"Successfully deleted {params.entity_type} entity {params.entity_id}")
+                return {
+                    "action": "delete",
+                    "entity_type": params.entity_type,
+                    "entity_id": params.entity_id,
+                    "message": f"Successfully deleted {params.entity_type} entity {params.entity_id}"
+                }
+            else:
+                raise Exception(f"Entity with ID {params.entity_id} not found")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to delete {params.entity_type} entity {params.entity_id}: {e}")
+            raise Exception(f"Failed to delete {params.entity_type} entity {params.entity_id}: {str(e)}")
     
     async def _transfer_entity(self, params: DatabaseOperationsParams) -> Dict[str, Any]:
         """Transfer amount between entities."""
         if not params.from_entity_id or not params.to_entity_id or not params.transfer_amount:
             raise ValueError("from_entity_id, to_entity_id, and transfer_amount are required for transfer operations")
         
-        # TODO: Implement Supabase MCP transfer operation
-        self.logger.info(f"Transferring {params.transfer_amount} from {params.from_entity_id} to {params.to_entity_id}")
+        # This is a complex operation that would require:
+        # 1. Check if source entity has sufficient balance
+        # 2. Update source entity (decrease balance)
+        # 3. Update destination entity (increase balance)
+        # 4. Create a transaction record
         
-        return {
-            "action": "transfer",
-            "from_entity_id": params.from_entity_id,
-            "to_entity_id": params.to_entity_id,
-            "transfer_amount": params.transfer_amount,
-            "message": f"Successfully transferred {params.transfer_amount} cents from {params.from_entity_id} to {params.to_entity_id}"
+        # For now, we'll implement a simple version that assumes both entities are savings accounts
+        # In a real implementation, this would be more sophisticated
+        
+        try:
+            # Start a transaction-like operation
+            # First, get current balances
+            from_query = f"""
+                SELECT "currentBalance" FROM savings WHERE id = $1
+            """
+            to_query = f"""
+                SELECT "currentBalance" FROM savings WHERE id = $1
+            """
+            
+            from_balance = await self.db_client.execute_query(from_query, params.from_entity_id, fetch_one=True)
+            to_balance = await self.db_client.execute_query(to_query, params.to_entity_id, fetch_one=True)
+            
+            if not from_balance or not to_balance:
+                raise Exception("One or both entities not found")
+            
+            current_from_balance = from_balance["currentBalance"]
+            current_to_balance = to_balance["currentBalance"]
+            
+            if current_from_balance < params.transfer_amount:
+                raise Exception(f"Insufficient balance. Available: {current_from_balance}, Required: {params.transfer_amount}")
+            
+            # Update both entities
+            new_from_balance = current_from_balance - params.transfer_amount
+            new_to_balance = current_to_balance + params.transfer_amount
+            
+            update_from_query = f"""
+                UPDATE savings 
+                SET "currentBalance" = $1, "updatedAt" = $2
+                WHERE id = $3
+                RETURNING id
+            """
+            
+            update_to_query = f"""
+                UPDATE savings 
+                SET "currentBalance" = $1, "updatedAt" = $2
+                WHERE id = $3
+                RETURNING id
+            """
+            
+            now = datetime.now().isoformat()
+            
+            # Update source entity
+            await self.db_client.execute_query(update_from_query, new_from_balance, now, params.from_entity_id, fetch_one=True)
+            
+            # Update destination entity
+            await self.db_client.execute_query(update_to_query, new_to_balance, now, params.to_entity_id, fetch_one=True)
+            
+            self.logger.info(f"Successfully transferred {params.transfer_amount} from {params.from_entity_id} to {params.to_entity_id}")
+            
+            return {
+                "action": "transfer",
+                "from_entity_id": params.from_entity_id,
+                "to_entity_id": params.to_entity_id,
+                "transfer_amount": params.transfer_amount,
+                "from_new_balance": new_from_balance,
+                "to_new_balance": new_to_balance,
+                "message": f"Successfully transferred {params.transfer_amount} cents from {params.from_entity_id} to {params.to_entity_id}"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to transfer {params.transfer_amount} from {params.from_entity_id} to {params.to_entity_id}: {e}")
+            raise Exception(f"Transfer failed: {str(e)}")
+    
+    def _get_table_name(self, entity_type: str) -> str:
+        """Get the correct database table name for an entity type."""
+        # Map entity types to their database table names
+        table_mapping = {
+            'asset': 'assets',
+            'assets': 'assets',
+            'savings': 'savings',
+            'liability': 'liabilities',
+            'liabilities': 'liabilities',
+            'income': 'incomes',
+            'incomes': 'incomes',
+            'expense': 'expenses',
+            'expenses': 'expenses',
+            'goal': 'goals',
+            'goals': 'goals',
+            'stock': 'stocks',
+            'stocks': 'stocks',
+            'insurance': 'insurances',
+            'insurances': 'insurances'
         }
+        
+        return table_mapping.get(entity_type.lower(), entity_type)
     
     def _build_entity_data(self, params: DatabaseOperationsParams) -> Dict[str, Any]:
         """Build entity data dictionary from parameters."""
         entity_data = {}
-        
-        # Add all non-None fields
+
+        # Field mapping from snake_case to camelCase for database columns
+        field_mapping = {
+            'target_amount': 'targetAmount',
+            'current_balance': 'currentBalance',
+            'monthly_contribution': 'monthlyContribution',
+            'interest_rate': 'interestRate',
+            'maturity_date': 'maturityDate',
+            'purchase_value': 'purchaseValue',
+            'current_value': 'currentValue',
+            'purchase_date': 'purchaseDate',
+            'start_date': 'startDate',
+            'end_date': 'endDate',
+            'target_date': 'targetDate',
+            'policy_number': 'policyNumber',
+            'payment_method': 'paymentMethod'
+        }
+
+        # Date fields that need to be converted to datetime objects
+        date_fields = {'purchase_date', 'start_date', 'end_date', 'target_date', 'maturity_date'}
+
+        # Add all non-None fields with proper column name mapping
         for field_name, field_value in params.model_dump(exclude_none=True).items():
-            if field_name not in ['action_type', 'entity_type', 'entity_id', 'from_entity_id', 'to_entity_id', 'transfer_amount']:
-                entity_data[field_name] = field_value
-        
+            if field_name not in ['action_type', 'entity_type', 'entity_id', 'from_entity_id', 'to_entity_id', 'transfer_amount', 'user_id']:
+                # Map snake_case to camelCase if needed
+                db_column_name = field_mapping.get(field_name, field_name)
+                
+                # Convert date strings to datetime objects
+                if field_name in date_fields and isinstance(field_value, str):
+                    try:
+                        from datetime import datetime
+                        entity_data[db_column_name] = datetime.fromisoformat(field_value.replace('Z', '+00:00'))
+                    except ValueError:
+                        # If parsing fails, keep the original value
+                        entity_data[db_column_name] = field_value
+                else:
+                    entity_data[db_column_name] = field_value
+
         return entity_data
 
 
