@@ -225,7 +225,7 @@ SUPPORTED_INTENTS = {intents}
     def generate_schema_file(self, output_path: str = None) -> str:
         """Generate complete schema file."""
         if output_path is None:
-            output_path = Path(__file__).parent.parent / "src" / "schemas" / "generated_intent_schemas.py"
+            output_path = Path(__file__).parent.parent / "src" / "vyuu_copilot_v2" / "schemas" / "generated_intent_schemas.py"
         
         intent_params = self.config.get("intent_parameters", {})
         intents = list(intent_params.keys())

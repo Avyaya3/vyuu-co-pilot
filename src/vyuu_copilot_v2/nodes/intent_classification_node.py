@@ -25,9 +25,9 @@ from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     IntentClassificationError,
     FallbackIntentResult,
     IntentCategory,
-    DataFetchParams,
-    AggregateParams,
-    ActionParams,
+    ReadParams,
+    DatabaseOperationsParams,
+    AdviceParams,
 )
 from vyuu_copilot_v2.utils.llm_client import LLMClient
 
@@ -87,29 +87,29 @@ class IntentClassifier:
 
 Your task is to analyze user requests and classify them into one of these intent categories:
 
-1. **data_fetch**: User wants to retrieve/view existing financial data
+1. **read**: User wants to retrieve/view existing financial data
 - Examples: "Show me my transactions", "What's my balance?", "List my accounts"
 - Extract parameters like: entity_type, time_period, account_types, limit, sort_by, order, filters
 
-2. **aggregate**: User wants to analyze/summarize financial data
-- Examples: "What's my total spending?", "Average monthly expenses", "Count transactions by category"
-- Extract parameters like: metric_type, group_by, time_period, category_filter, account_filter, comparison_period
+2. **database_operations**: User wants to perform database operations (create, update, delete, transfer)
+- Examples: "Transfer $100 to savings", "Pay my electric bill", "Create a new budget", "Delete this transaction"
+- Extract parameters like: action_type, entity_type, entity_id, data, user_id
 
-3. **action**: User wants to perform an action (transfer, payment, categorization, etc.)
-- Examples: "Transfer $100 to savings", "Pay my electric bill", "Categorize this transaction"
-- Extract parameters like: action_type, amount, source_account, target_account, description, schedule_date, confirmation_required
+3. **advice**: User wants financial advice or recommendations
+- Examples: "How can I save more money?", "What should I invest in?", "Give me budgeting advice"
+- Extract parameters like: user_query, context_data, user_id
 
 4. **unknown**: Intent is unclear or doesn't fit the above categories
 
 CRITICAL: You must respond with a valid JSON object with this exact structure:
 {
-"intent": "data_fetch|aggregate|action|unknown",
+"intent": "read|database_operations|advice|unknown",
 "confidence": 0.85,
 "reasoning": "brief explanation",
 "user_input_analysis": "analysis of the input",
 "missing_params": ["param1", "param2"],
 "clarification_needed": true,
-"data_fetch_params": {
+"read_params": {
     "entity_type": "transactions",
     "account_types": ["checking", "savings"],
     "time_period": "last_month",
@@ -117,17 +117,17 @@ CRITICAL: You must respond with a valid JSON object with this exact structure:
     "sort_by": "date",
     "order": "desc"
 },
-"aggregate_params": {
-    "metric_type": "sum",
-    "group_by": ["category", "month"],
-    "category_filter": ["groceries", "restaurants"],
-    "time_period": "last_year"
+"database_operations_params": {
+    "action_type": "create",
+    "entity_type": "budget",
+    "entity_id": null,
+    "data": {"name": "Monthly Budget", "amount": 1000},
+    "user_id": "user123"
 },
-"action_params": {
-    "action_type": "transfer",
-    "amount": 100.0,
-    "source_account": "checking",
-    "target_account": "savings"
+"advice_params": {
+    "user_query": "How can I save more money?",
+    "context_data": "User has monthly income of $5000 and expenses of $4000",
+    "user_id": "user123"
 }
 }
 
@@ -190,14 +190,14 @@ Respond with valid JSON containing intent classification and extracted parameter
             aggregate_params = None
             action_params = None
             
-            if llm_result.get("intent") == IntentCategory.DATA_FETCH and llm_result.get("data_fetch_params"):
-                data_fetch_params = DataFetchParams(**llm_result["data_fetch_params"])
+            if llm_result.get("intent") == IntentCategory.READ and llm_result.get("read_params"):
+                data_fetch_params = ReadParams(**llm_result["read_params"])
             
-            elif llm_result.get("intent") == IntentCategory.AGGREGATE and llm_result.get("aggregate_params"):
-                aggregate_params = AggregateParams(**llm_result["aggregate_params"])
+            elif llm_result.get("intent") == IntentCategory.DATABASE_OPERATIONS and llm_result.get("database_operations_params"):
+                action_params = DatabaseOperationsParams(**llm_result["database_operations_params"])
             
-            elif llm_result.get("intent") == IntentCategory.ACTION and llm_result.get("action_params"):
-                action_params = ActionParams(**llm_result["action_params"])
+            elif llm_result.get("intent") == IntentCategory.ADVICE and llm_result.get("advice_params"):
+                action_params = AdviceParams(**llm_result["advice_params"])
             
             # Create and validate result
             result = IntentClassificationResult(
@@ -266,9 +266,9 @@ async def intent_classification_node(state: MainState) -> MainState:
         
         # Convert IntentCategory to IntentType for state compatibility
         intent_mapping = {
-            IntentCategory.DATA_FETCH: IntentType.DATA_FETCH,
-            IntentCategory.AGGREGATE: IntentType.AGGREGATE,
-            IntentCategory.ACTION: IntentType.ACTION,
+            IntentCategory.READ: IntentType.READ,
+            IntentCategory.DATABASE_OPERATIONS: IntentType.DATABASE_OPERATIONS,
+            IntentCategory.ADVICE: IntentType.ADVICE,
             IntentCategory.UNKNOWN: IntentType.UNKNOWN,
         }
         

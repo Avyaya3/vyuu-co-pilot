@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 
 from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
-from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from vyuu_copilot_v2.schemas.generated_intent_schemas import ReadParams, DatabaseOperationsParams, AdviceParams
 
 logger = logging.getLogger(__name__)
 
@@ -259,17 +259,17 @@ class CompletenessValidator:
             return False
         
         # Intent-specific validations
-        if intent == IntentType.ACTION:
-            return self._validate_action_param_quality(param_name, param_value)
-        elif intent == IntentType.DATA_FETCH:
+        if intent == IntentType.DATABASE_OPERATIONS:
+            return self._validate_database_operations_param_quality(param_name, param_value)
+        elif intent == IntentType.READ:
             return self._validate_data_fetch_param_quality(param_name, param_value)
-        elif intent == IntentType.AGGREGATE:
-            return self._validate_aggregate_param_quality(param_name, param_value)
+        elif intent == IntentType.ADVICE:
+            return self._validate_advice_param_quality(param_name, param_value)
         
         return True
     
-    def _validate_action_param_quality(self, param_name: str, param_value: Any) -> bool:
-        """Validate ACTION intent parameter quality."""
+    def _validate_database_operations_param_quality(self, param_name: str, param_value: Any) -> bool:
+        """Validate DATABASE_OPERATIONS intent parameter quality."""
         if param_name == "amount":
             try:
                 amount = float(param_value)
@@ -286,7 +286,7 @@ class CompletenessValidator:
         return True
     
     def _validate_data_fetch_param_quality(self, param_name: str, param_value: Any) -> bool:
-        """Validate DATA_FETCH intent parameter quality."""
+        """Validate READ intent parameter quality."""
         if param_name == "limit":
             try:
                 limit = int(param_value)
@@ -302,8 +302,8 @@ class CompletenessValidator:
         
         return True
     
-    def _validate_aggregate_param_quality(self, param_name: str, param_value: Any) -> bool:
-        """Validate AGGREGATE intent parameter quality."""
+    def _validate_advice_param_quality(self, param_name: str, param_value: Any) -> bool:
+        """Validate ADVICE intent parameter quality."""
         if param_name == "metric_type":
             # Valid aggregation types
             valid_metrics = {"sum", "average", "count", "min", "max", "total"}

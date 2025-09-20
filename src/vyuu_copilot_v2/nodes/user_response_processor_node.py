@@ -18,7 +18,7 @@ import openai
 from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 from vyuu_copilot_v2.utils.llm_client import LLMClient
 from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
-from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from vyuu_copilot_v2.schemas.generated_intent_schemas import ReadParams, DatabaseOperationsParams, AdviceParams
 
 logger = logging.getLogger(__name__)
 

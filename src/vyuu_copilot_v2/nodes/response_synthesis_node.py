@@ -39,9 +39,9 @@ RESPONSE GUIDELINES:
 
 # Intent-specific guidelines
 INTENT_GUIDELINES = {
-    IntentCategory.DATA_FETCH: "Focus on presenting data clearly and informatively. Highlight key information and make it easy to understand.",
-    IntentCategory.AGGREGATE: "Focus on providing insights, trends, and analysis. Explain patterns and what the data means.",
-    IntentCategory.ACTION: "Focus on confirming actions and providing next steps. Be clear about what was done and any follow-up needed."
+    IntentCategory.READ: "Focus on presenting data clearly and informatively. Highlight key information and make it easy to understand.",
+    IntentCategory.DATABASE_OPERATIONS: "Focus on confirming actions and providing next steps. Be clear about what was done and any follow-up needed.",
+    IntentCategory.ADVICE: "Focus on providing personalized, actionable financial advice. Be specific and practical in recommendations."
 }
 
 
@@ -78,16 +78,14 @@ class ResponseSynthesizer:
             processed_data = self._process_tool_results(tool_results)
 
             # Step 2: Generate intent-specific response
-            if state.intent == IntentCategory.DATA_FETCH:
-                response = await self._generate_data_fetch_response(
+            if state.intent == IntentCategory.READ:
+                response = await self._generate_read_response(
                     state, processed_data
                 )
-            elif state.intent == IntentCategory.AGGREGATE:
-                response = await self._generate_aggregate_response(
-                    state, processed_data
-                )
-            elif state.intent == IntentCategory.ACTION:
-                response = await self._generate_action_response(state, processed_data)
+            elif state.intent == IntentCategory.DATABASE_OPERATIONS:
+                response = await self._generate_database_operations_response(state, processed_data)
+            elif state.intent == IntentCategory.ADVICE:
+                response = await self._generate_advice_response(state, processed_data)
             else:
                 response = await self._generate_generic_response(state, processed_data)
 
@@ -182,7 +180,7 @@ class ResponseSynthesizer:
                 elif isinstance(value, dict):
                     aggregated_data[key].update(value)
 
-    async def _generate_data_fetch_response(
+    async def _generate_read_response(
         self, state: OrchestratorState, processed_data: Dict[str, Any]
     ) -> str:
         """
@@ -231,7 +229,7 @@ Please provide a clear, informative response that addresses the user's request."
             logger.error(f"LLM-based data fetch response generation failed: {e}")
             return self._generate_template_data_fetch_response(processed_data)
 
-    async def _generate_aggregate_response(
+    async def _generate_database_operations_response(
         self, state: OrchestratorState, processed_data: Dict[str, Any]
     ) -> str:
         """
@@ -280,7 +278,7 @@ Please provide analysis, insights, and trends based on the data."""
             logger.error(f"LLM-based aggregate response generation failed: {e}")
             return self._generate_template_aggregate_response(processed_data)
 
-    async def _generate_action_response(
+    async def _generate_advice_response(
         self, state: OrchestratorState, processed_data: Dict[str, Any]
     ) -> str:
         """

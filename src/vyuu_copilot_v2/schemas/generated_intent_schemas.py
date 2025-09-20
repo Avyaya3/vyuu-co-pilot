@@ -1,7 +1,7 @@
 """
 Auto-generated Intent Schemas from YAML Configuration.
 
-Generated on: 2025-08-22T12:18:23.638221
+Generated on: 2025-09-20T18:07:52.190618
 Source: /Users/manjiripathak/Avyaya/vyuu-copilot-v2/config/intent_parameters.yaml
 
 DO NOT EDIT MANUALLY - Run scripts/generate_intent_schemas.py to regenerate.
@@ -15,9 +15,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class IntentCategory(str, Enum):
     """Supported intent categories for user requests."""
-    DATA_FETCH = "data_fetch"
-    AGGREGATE = "aggregate"
-    ACTION = "action"
+    READ = "read"
+    DATABASE_OPERATIONS = "database_operations"
+    ADVICE = "advice"
     UNKNOWN = "unknown"
     CLARIFICATION = "clarification"
 
@@ -29,7 +29,7 @@ class ConfidenceLevel(str, Enum):
     LOW = "low"        # 0.0 - 0.49
 
 
-class DataFetchParams(BaseModel):
+class ReadParams(BaseModel):
     """
     Retrieve and display financial data from various entity types
     
@@ -69,27 +69,9 @@ class DataFetchParams(BaseModel):
     entity_id: Optional[str] = Field(None, description="Specific entity ID for single record queries")
 
 
-class AggregateParams(BaseModel):
+class DatabaseOperationsParams(BaseModel):
     """
-    Analyze and summarize financial data across different entity types
-    
-    Auto-generated from intent_parameters.yaml
-    """
-    
-    # Critical parameters
-    metric_type: Optional[str] = Field(None, description="Type of metric to calculate (sum, average, count, summary, etc.)")
-
-    # Optional parameters
-    group_by: Optional[str] = Field(None, description="Field to group results by (category, type, provider, etc.)")
-    time_period: Optional[str] = Field(None, description="Time range for aggregation")
-    category_filter: Optional[List[str]] = Field(None, description="Categories to include in aggregation")
-    entity_filter: Optional[List[str]] = Field(None, description="Entity types to include in aggregation")
-    amount_range: Optional[List[int]] = Field(None, description="Amount range filter [min, max] in cents")
-
-
-class ActionParams(BaseModel):
-    """
-    Execute financial operations and manage financial entities
+    Execute database operations (create, update, delete) on financial entities
     
     Auto-generated from intent_parameters.yaml
     """
@@ -130,6 +112,18 @@ class ActionParams(BaseModel):
     emi: Optional[int] = Field(None, description="EMI for liabilities (in cents)")
     target: Optional[int] = Field(None, description="Target amount for goals (in cents)")
     current: Optional[int] = Field(None, description="Current amount for goals (in cents)")
+
+
+class AdviceParams(BaseModel):
+    """
+    Provide personalized financial advice based on user query and financial data
+    
+    Auto-generated from intent_parameters.yaml
+    """
+    
+    # Optional parameters
+    user_query: Optional[str] = Field(None, description="The user's question or request for advice")
+    context_data: Optional[str] = Field(None, description="Financial data context provided from frontend")
 
 
 class UnknownParams(BaseModel):
@@ -205,6 +199,16 @@ class FallbackIntentResult(BaseModel):
             reasoning=f"Classification failed due to: {type(error).__name__}"
         )
     
+    @property
+    def extracted_parameters(self) -> Dict[str, Any]:
+        """Get extracted parameters (empty for fallback)."""
+        return {}
+    
+    @property
+    def requires_clarification(self) -> bool:
+        """Check if clarification is needed (always true for fallback)."""
+        return self.clarification_needed
+    
     def to_classification_result(self) -> "IntentClassificationResult":
         """Convert to standard IntentClassificationResult."""
         return IntentClassificationResult(
@@ -243,17 +247,17 @@ class IntentClassificationResult(BaseModel):
         max_length=500,
         description="Brief explanation of why this intent was chosen"
     )
-    data_fetch_params: Optional[DataFetchParams] = Field(
+    read_params: Optional[ReadParams] = Field(
         None,
-        description="Parameters extracted for data_fetch intents"
+        description="Parameters extracted for read intents"
     )
-    aggregate_params: Optional[AggregateParams] = Field(
+    database_operations_params: Optional[DatabaseOperationsParams] = Field(
         None,
-        description="Parameters extracted for aggregate intents"
+        description="Parameters extracted for database_operations intents"
     )
-    action_params: Optional[ActionParams] = Field(
+    advice_params: Optional[AdviceParams] = Field(
         None,
-        description="Parameters extracted for action intents"
+        description="Parameters extracted for advice intents"
     )
     unknown_params: Optional[UnknownParams] = Field(
         None,
@@ -311,12 +315,12 @@ class IntentClassificationResult(BaseModel):
         """Get all extracted parameters as a single dictionary."""
         params = {}
         
-        if self.data_fetch_params:
-            params.update(self.data_fetch_params.model_dump(exclude_none=True))
-        if self.aggregate_params:
-            params.update(self.aggregate_params.model_dump(exclude_none=True))
-        if self.action_params:
-            params.update(self.action_params.model_dump(exclude_none=True))
+        if self.read_params:
+            params.update(self.read_params.model_dump(exclude_none=True))
+        if self.database_operations_params:
+            params.update(self.database_operations_params.model_dump(exclude_none=True))
+        if self.advice_params:
+            params.update(self.advice_params.model_dump(exclude_none=True))
         if self.unknown_params:
             params.update(self.unknown_params.model_dump(exclude_none=True))
         if self.clarification_params:
@@ -329,12 +333,12 @@ class IntentClassificationResult(BaseModel):
 
 # Auto-generated mappings
 INTENT_PARAM_MODELS = {
-    IntentCategory.DATA_FETCH: DataFetchParams,
-    IntentCategory.AGGREGATE: AggregateParams,
-    IntentCategory.ACTION: ActionParams,
+    IntentCategory.READ: ReadParams,
+    IntentCategory.DATABASE_OPERATIONS: DatabaseOperationsParams,
+    IntentCategory.ADVICE: AdviceParams,
     IntentCategory.UNKNOWN: UnknownParams,
     IntentCategory.CLARIFICATION: ClarificationParams,
 }
 
 # Intent type validation
-SUPPORTED_INTENTS = ['data_fetch', 'aggregate', 'action', 'unknown', 'clarification']
+SUPPORTED_INTENTS = ['read', 'database_operations', 'advice', 'unknown', 'clarification']

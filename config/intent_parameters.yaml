@@ -1,5 +1,5 @@
 intent_parameters:
-  data_fetch:
+  read:
     critical:
       - name: "entity_type"
         type: "str"
@@ -101,30 +101,7 @@ intent_parameters:
         description: "Specific entity ID for single record queries"
     description: "Retrieve and display financial data from various entity types"
 
-  aggregate:
-    critical:
-      - name: "metric_type"
-        type: "str"
-        description: "Type of metric to calculate (sum, average, count, summary, etc.)"
-    optional:
-      - name: "group_by"
-        type: "str"
-        description: "Field to group results by (category, type, provider, etc.)"
-      - name: "time_period"
-        type: "str"
-        description: "Time range for aggregation"
-      - name: "category_filter"
-        type: "List[str]"
-        description: "Categories to include in aggregation"
-      - name: "entity_filter"
-        type: "List[str]"
-        description: "Entity types to include in aggregation"
-      - name: "amount_range"
-        type: "List[int]"
-        description: "Amount range filter [min, max] in cents"
-    description: "Analyze and summarize financial data across different entity types"
-
-  action:
+  database_operations:
     critical:
       - name: "action_type"
         type: "str"
@@ -227,7 +204,18 @@ intent_parameters:
       - name: "current"
         type: "int"
         description: "Current amount for goals (in cents)"
-    description: "Execute financial operations and manage financial entities"
+    description: "Execute database operations (create, update, delete) on financial entities"
+
+  advice:
+    critical: []
+    optional:
+      - name: "user_query"
+        type: "str"
+        description: "The user's question or request for advice"
+      - name: "context_data"
+        type: "str"
+        description: "Financial data context provided from frontend"
+    description: "Provide personalized financial advice based on user query and financial data"
 
   unknown:
     critical: []

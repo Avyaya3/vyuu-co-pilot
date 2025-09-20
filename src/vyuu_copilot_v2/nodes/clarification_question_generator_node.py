@@ -76,19 +76,19 @@ class QuestionTemplate:
     def _get_intent_guidance(intent: IntentType, slot_names: List[str]) -> Optional[str]:
         """Get intent-specific guidance for question generation."""
         guidance_map = {
-            IntentType.ACTION: {
+            IntentType.DATABASE_OPERATIONS: {
                 "amount": "Ask for a specific dollar amount (e.g., '$500', '$1,250.50').",
                 "source_account": "Ask which account to transfer/withdraw from (e.g., 'checking', 'savings').",
                 "target_account": "Ask which account to transfer/deposit to.",
                 "description": "Ask for an optional description or memo for the transaction."
             },
-            IntentType.DATA_FETCH: {
+            IntentType.READ: {
                 "entity_type": "Ask what type of data they want to see (e.g., 'transactions', 'balances', 'statements').",
                 "time_period": "Ask for a specific time range (e.g., 'last month', 'January 2024', 'last 30 days').",
                 "account_types": "Ask which accounts to include (e.g., 'checking', 'savings', 'credit cards').",
                 "limit": "Ask how many results they want to see (e.g., 'top 10', 'all transactions')."
             },
-            IntentType.AGGREGATE: {
+            IntentType.ADVICE: {
                 "metric_type": "Ask what kind of analysis they want (e.g., 'total spending', 'average', 'breakdown').",
                 "group_by": "Ask how they want the data grouped (e.g., 'by category', 'by month', 'by account').",
                 "categories": "Ask which spending categories to include (e.g., 'groceries', 'entertainment')."

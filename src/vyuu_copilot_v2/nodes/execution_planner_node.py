@@ -29,21 +29,19 @@ logger = logging.getLogger(__name__)
 
 # Intent to common operation mapping for fallback scenarios
 INTENT_OPERATION_MAPPING = {
-    IntentCategory.DATA_FETCH: {
+    IntentCategory.READ: {
         "account_balance": "get_account_balance",
         "transaction_history": "get_transaction_history",
         "account_info": "get_user_accounts"
     },
-    IntentCategory.AGGREGATE: {
-        "spending": "spending_by_category",
-        "summary": "monthly_summary", 
-        "analysis": "budget_analysis",
-        "trends": "transaction_trends"
+    IntentCategory.DATABASE_OPERATIONS: {
+        "create": "create",
+        "update": "update",
+        "delete": "delete",
+        "transfer": "transfer"
     },
-    IntentCategory.ACTION: {
-        "transfer": "transfer_money",
-        "create": "create_transaction",
-        "update": "update_transaction"
+    IntentCategory.ADVICE: {
+        "generate_advice": "generate_advice"
     }
 }
 
@@ -371,29 +369,26 @@ def _create_fallback_plan(state: OrchestratorState) -> List[Dict[str, Any]]:
     # Use extracted parameters directly (already normalized)
     base_params = state.extracted_params.copy() if state.extracted_params else {}
     
-    if state.intent == IntentCategory.DATA_FETCH:
-        # Default to account balance query
+    if state.intent == IntentCategory.READ:
+        # Default to data fetch
         return [{
-            "tool_name": "db_query",
-            "operation": "get_user_accounts",
+            "tool_name": "data_fetch",
+            "operation": "get_user_info",
             "params": base_params
         }]
     
-    elif state.intent == IntentCategory.AGGREGATE:
-        # Default to spending analysis
-        params = base_params.copy()
-        if "days_back" not in params:
-            params["days_back"] = 30
-        return [{
-            "tool_name": "db_aggregate", 
-            "operation": "spending_by_category",
-            "params": params
-        }]
-    
-    elif state.intent == IntentCategory.ACTION:
-        # Cannot create safe fallback for actions
-        logger.warning("Cannot create fallback plan for action intent")
+    elif state.intent == IntentCategory.DATABASE_OPERATIONS:
+        # Cannot create safe fallback for database operations
+        logger.warning("Cannot create fallback plan for database_operations intent")
         return []
+    
+    elif state.intent == IntentCategory.ADVICE:
+        # Default to advice generation
+        return [{
+            "tool_name": "advice",
+            "operation": "generate_advice",
+            "params": base_params
+        }]
     
     # Default fallback
     return [{

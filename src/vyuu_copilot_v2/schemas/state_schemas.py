@@ -37,9 +37,9 @@ class MessageRole(str, Enum):
 
 class IntentType(str, Enum):
     """Supported intent types for user requests."""
-    DATA_FETCH = "data_fetch"
-    AGGREGATE = "aggregate"
-    ACTION = "action"
+    READ = "read"
+    DATABASE_OPERATIONS = "database_operations"
+    ADVICE = "advice"
     CLARIFICATION = "clarification"
     UNKNOWN = "unknown"
 

@@ -8,29 +8,27 @@ and their schemas for the execution planning node.
 from typing import Dict, Type
 from .base import ToolInterface
 from .data_fetch import DataFetchTool
-from .db_aggregate import DbAggregateTool
-from .db_action import DbActionTool
+from .database_operations_tool import database_operations_tool
+from .advice_tool import advice_tool
 
 
 # Initialize tool instances
 _data_fetch_tool = DataFetchTool()
-_db_aggregate_tool = DbAggregateTool()
-_db_action_tool = DbActionTool()
 
 
 # Tool registry mapping tool names to tool instances
 TOOL_REGISTRY: Dict[str, ToolInterface] = {
     "data_fetch": _data_fetch_tool,
-    "db_aggregate": _db_aggregate_tool,
-    "db_action": _db_action_tool,
+    "database_operations": database_operations_tool,
+    "advice": advice_tool,
 }
 
 
 # Schema registry for quick access to tool schemas
 TOOL_SCHEMAS: Dict[str, Type] = {
     "data_fetch": _data_fetch_tool.schema,
-    "db_aggregate": _db_aggregate_tool.schema,
-    "db_action": _db_action_tool.schema,
+    "database_operations": database_operations_tool.schema,
+    "advice": advice_tool.schema,
 }
 
 
@@ -102,27 +100,21 @@ def get_tool_info() -> Dict[str, Dict[str, str]]:
                 "get_net_worth", "get_dashboard_metrics", "get_user_info"
             ]
         },
-        "db_aggregate": {
-            "name": "db_aggregate",
-            "description": "Analytics and aggregation operations (spending analysis, summaries)",
+        "database_operations": {
+            "name": "database_operations",
+            "description": "Database operations for creating, updating, deleting, and transferring financial entities",
             "operations": [
-                "spending_by_category",
-                "monthly_summary",
-                "account_totals",
-                "budget_analysis",
-                "transaction_trends",
-                "income_vs_expense"
+                "create",
+                "update", 
+                "delete",
+                "transfer"
             ]
         },
-        "db_action": {
-            "name": "db_action",
-            "description": "Create, update, and transfer operations (transactions, accounts)",
+        "advice": {
+            "name": "advice",
+            "description": "Provide personalized financial advice based on user query and financial context",
             "operations": [
-                "create_transaction",
-                "transfer_money",
-                "create_account",
-                "update_transaction",
-                "delete_transaction"
+                "generate_advice"
             ]
         }
     } 

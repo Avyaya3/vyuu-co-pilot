@@ -4,9 +4,9 @@ from typing import Any, Dict, Optional, List
 from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
 from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 from vyuu_copilot_v2.schemas.generated_intent_schemas import (
-    DataFetchParams, 
-    AggregateParams, 
-    ActionParams,
+    ReadParams, 
+    DatabaseOperationsParams, 
+    AdviceParams,
     INTENT_PARAM_MODELS as GENERATED_INTENT_PARAM_MODELS,
     IntentCategory
 )
@@ -30,9 +30,9 @@ def get_pydantic_model_for_intent(intent: IntentType) -> Optional[type]:
     """
     # Convert IntentType to IntentCategory
     intent_mapping = {
-        IntentType.DATA_FETCH: IntentCategory.DATA_FETCH,
-        IntentType.AGGREGATE: IntentCategory.AGGREGATE,
-        IntentType.ACTION: IntentCategory.ACTION,
+        IntentType.READ: IntentCategory.READ,
+        IntentType.DATABASE_OPERATIONS: IntentCategory.DATABASE_OPERATIONS,
+        IntentType.ADVICE: IntentCategory.ADVICE,
         IntentType.UNKNOWN: IntentCategory.UNKNOWN,
         IntentType.CLARIFICATION: IntentCategory.CLARIFICATION,
     }
