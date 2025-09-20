@@ -1,6 +1,6 @@
 import logging
 from typing import Tuple
-from src.schemas.state_schemas import ClarificationState
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState
 
 logger = logging.getLogger(__name__)
 

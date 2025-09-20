@@ -19,8 +19,8 @@ import asyncio
 import logging
 from uuid import uuid4
 
-from src.orchestrator import MainOrchestrator, SessionManager
-from src.schemas.state_schemas import IntentType
+from vyuu_copilot_v2.orchestrator import MainOrchestrator, SessionManager
+from vyuu_copilot_v2.schemas.state_schemas import IntentType
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,7 +42,7 @@ async def test_session_manager():
     
     # Test session creation and storage
     print("1. Testing session creation and storage")
-    from src.schemas.state_schemas import MainState
+    from vyuu_copilot_v2.schemas.state_schemas import MainState
     
     test_state = MainState(
         user_input="Test message",

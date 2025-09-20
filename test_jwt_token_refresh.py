@@ -27,7 +27,7 @@ def test_jwt_token_refresh():
     
     try:
         # Import the modules
-        from src.utils.auth import SupabaseAuth
+        from vyuu_copilot_v2.utils.auth import SupabaseAuth
         
         # Mock configuration
         mock_config = Mock()
@@ -166,7 +166,7 @@ def test_fastapi_refresh_endpoint():
     
     try:
         # Import the modules
-        from src.api import app
+        from vyuu_copilot_v2.api import app
         from fastapi.testclient import TestClient
         
         # Mock configuration

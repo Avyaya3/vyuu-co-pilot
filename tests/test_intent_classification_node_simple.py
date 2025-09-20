@@ -12,19 +12,19 @@ import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     MainState,
     IntentType,
     MessageRole,
     Message,
 )
-from src.schemas.generated_intent_schemas import (
+from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     IntentCategory,
     IntentClassificationResult,
     IntentClassificationError,
     DataFetchParams,
 )
-from src.utils.llm_client import LLMClient
+from vyuu_copilot_v2.utils.llm_client import LLMClient
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -97,7 +97,7 @@ class TestIntentClassifierBasics:
     async def test_empty_input_validation(self):
         """Test that empty input is properly validated."""
         
-        from src.nodes.intent_classification_node import IntentClassifier
+        from vyuu_copilot_v2.nodes.intent_classification_node import IntentClassifier
         
         with patch('src.nodes.intent_classification_node.LLMClient'):
             classifier = IntentClassifier()
@@ -111,7 +111,7 @@ class TestIntentClassifierBasics:
     async def test_successful_classification_mock(self):
         """Test successful classification with mocked LLM."""
         
-        from src.nodes.intent_classification_node import IntentClassifier
+        from vyuu_copilot_v2.nodes.intent_classification_node import IntentClassifier
         
         with patch('src.utils.llm_client.LLMClient') as mock_llm_class:
             # Create mock LLM client
@@ -143,7 +143,7 @@ class TestIntentClassificationNode:
     @pytest.mark.asyncio
     async def test_node_with_mock_classifier(self):
         """Test the node with mocked classifier."""
-        from src.nodes.intent_classification_node import intent_classification_node
+        from vyuu_copilot_v2.nodes.intent_classification_node import intent_classification_node
         
         # Create test state
         state = create_test_state("Show me my transactions")
@@ -178,7 +178,7 @@ class TestIntentClassificationNode:
     @pytest.mark.asyncio
     async def test_node_error_handling(self):
         """Test node error handling."""
-        from src.nodes.intent_classification_node import intent_classification_node
+        from vyuu_copilot_v2.nodes.intent_classification_node import intent_classification_node
         
         # Create test state
         state = create_test_state("Test input")
@@ -205,7 +205,7 @@ class TestResponseValidation:
     def test_valid_response_parsing(self):
         """Test parsing of valid responses."""
         
-        from src.nodes.intent_classification_node import IntentClassifier
+        from vyuu_copilot_v2.nodes.intent_classification_node import IntentClassifier
         
         classifier = IntentClassifier()
         
@@ -229,8 +229,8 @@ class TestResponseValidation:
     def test_invalid_intent_handling(self):
         """Test handling of invalid intent values."""
         
-        from src.nodes.intent_classification_node import IntentClassifier
-        from src.schemas.generated_intent_schemas import IntentClassificationError
+        from vyuu_copilot_v2.nodes.intent_classification_node import IntentClassifier
+        from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentClassificationError
         
         classifier = IntentClassifier()
         
@@ -263,7 +263,7 @@ async def test_real_openai_integration():
     if not os.getenv("OPENAI_API_KEY"):
         pytest.skip("No OpenAI API key available for integration test")
     
-    from src.nodes.intent_classification_node import intent_classification_node
+    from vyuu_copilot_v2.nodes.intent_classification_node import intent_classification_node
     
     # Create test state
     state = create_test_state("Show me my transactions from last month")

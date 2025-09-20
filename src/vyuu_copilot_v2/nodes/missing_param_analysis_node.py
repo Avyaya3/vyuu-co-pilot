@@ -1,16 +1,16 @@
 import logging
 import json
 from typing import Any, Dict, Optional, List
-from src.utils.parameter_config import get_parameter_config
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.schemas.generated_intent_schemas import (
+from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     DataFetchParams, 
     AggregateParams, 
     ActionParams,
     INTENT_PARAM_MODELS as GENERATED_INTENT_PARAM_MODELS,
     IntentCategory
 )
-from src.utils.llm_client import LLMClient
+from vyuu_copilot_v2.utils.llm_client import LLMClient
 import asyncio
 
 logger = logging.getLogger(__name__)

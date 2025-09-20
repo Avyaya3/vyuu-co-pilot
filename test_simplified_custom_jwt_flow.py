@@ -21,7 +21,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 # Import our modules
-from src.utils.auth import SupabaseAuth, get_auth_manager
+from vyuu_copilot_v2.utils.auth import SupabaseAuth, get_auth_manager
 
 
 class TestSimplifiedCustomJWTFlow:
@@ -72,7 +72,7 @@ class TestSimplifiedCustomJWTFlow:
                     
                     # Test JWT verification
                     try:
-                        from src.utils.auth import verify_jwt_token
+                        from vyuu_copilot_v2.utils.auth import verify_jwt_token
                         result = asyncio.run(verify_jwt_token("Bearer test-custom-jwt-token"))
                         
                         if result and result.get("token_type") == "custom_jwt":
@@ -107,7 +107,7 @@ class TestSimplifiedCustomJWTFlow:
             
             # Mock custom JWT verification to fail
             with patch.object(auth_manager, 'verify_custom_jwt') as mock_verify_custom:
-                from src.utils.auth import TokenValidationError
+                from vyuu_copilot_v2.utils.auth import TokenValidationError
                 mock_verify_custom.side_effect = TokenValidationError("Custom JWT verification failed")
                 
                 # Mock Supabase JWT verification (should not be called)
@@ -116,7 +116,7 @@ class TestSimplifiedCustomJWTFlow:
                     
                     # Test JWT verification
                     try:
-                        from src.utils.auth import verify_jwt_token
+                        from vyuu_copilot_v2.utils.auth import verify_jwt_token
                         result = asyncio.run(verify_jwt_token("Bearer invalid-token"))
                         
                         print(f"❌ JWT verification should have failed but didn't")
@@ -149,7 +149,7 @@ class TestSimplifiedCustomJWTFlow:
             
             # Test JWT verification with no authorization header
             try:
-                from src.utils.auth import verify_jwt_token
+                from vyuu_copilot_v2.utils.auth import verify_jwt_token
                 result = asyncio.run(verify_jwt_token(None))
                 
                 if result is None:
@@ -184,7 +184,7 @@ class TestSimplifiedCustomJWTFlow:
             
             # Test JWT verification with missing config
             try:
-                from src.utils.auth import verify_jwt_token
+                from vyuu_copilot_v2.utils.auth import verify_jwt_token
                 result = asyncio.run(verify_jwt_token("Bearer test-token"))
                 
                 print(f"❌ JWT verification should have failed but didn't")

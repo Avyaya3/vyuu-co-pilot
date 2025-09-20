@@ -13,15 +13,15 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from src.nodes.response_synthesis_node import (
+from vyuu_copilot_v2.nodes.response_synthesis_node import (
     ResponseSynthesizer,
     response_synthesis_node,
     BASE_SYSTEM_PROMPT,
     INTENT_GUIDELINES,
 )
-from src.schemas.state_schemas import OrchestratorState, IntentType
-from src.schemas.generated_intent_schemas import IntentCategory
-from src.utils.data_formatters import DataFormatter
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory
+from vyuu_copilot_v2.utils.data_formatters import DataFormatter
 
 
 class TestDataFormatter:

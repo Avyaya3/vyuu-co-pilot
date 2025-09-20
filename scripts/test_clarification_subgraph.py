@@ -18,8 +18,8 @@ import logging
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from src.schemas.state_schemas import MainState, ClarificationState, IntentType
-from src.subgraphs.clarification_subgraph import (
+from vyuu_copilot_v2.schemas.state_schemas import MainState, ClarificationState, IntentType
+from vyuu_copilot_v2.subgraphs.clarification_subgraph import (
     clarification_subgraph,
     clarification_entry_wrapper,
     clarification_exit_wrapper,

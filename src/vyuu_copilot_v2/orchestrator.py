@@ -21,8 +21,8 @@ from typing import Dict, Any, Optional, List
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from src.schemas.state_schemas import MainState, MessageManager, ConversationContext
-from src.graphs.main_orchestrator_graph import main_orchestrator_graph
+from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager, ConversationContext
+from vyuu_copilot_v2.graphs.main_orchestrator_graph import main_orchestrator_graph
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class MainOrchestrator:
         # Initialize session manager
         if use_database:
             try:
-                from src.utils.database_session_manager import DatabaseSessionManager
+                from vyuu_copilot_v2.utils.database_session_manager import DatabaseSessionManager
                 self.session_manager = DatabaseSessionManager(session_expiry_hours=24)
                 logger.info("[MainOrchestrator] Initialized with database session management")
             except Exception as e:
@@ -201,7 +201,7 @@ class MainOrchestrator:
             # Add Supabase JWT token for MCP calls if user_id is available
             if user_id:
                 try:
-                    from src.utils.auth import get_auth_manager
+                    from vyuu_copilot_v2.utils.auth import get_auth_manager
                     auth_manager = get_auth_manager()
                     supabase_jwt = auth_manager.get_supabase_jwt_for_mcp(user_id)
                     state.metadata["supabase_jwt_token"] = supabase_jwt
@@ -652,7 +652,7 @@ class MainOrchestrator:
         # If this is a MainState, we need to convert it to ClarificationState for resume
         if isinstance(state, MainState):
             # Convert to ClarificationState for resume processing
-            from src.schemas.state_schemas import ClarificationState
+            from vyuu_copilot_v2.schemas.state_schemas import ClarificationState
             
             # Create ClarificationState with resume information
             clarification_state = ClarificationState(

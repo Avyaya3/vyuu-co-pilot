@@ -60,7 +60,7 @@ def test_custom_jwt_verification():
     # Test the custom JWT verification
     try:
         # Import the auth module
-        from src.utils.auth import SupabaseAuth
+        from vyuu_copilot_v2.utils.auth import SupabaseAuth
         
         # Create auth manager with mocked dependencies
         with patch('src.utils.auth.get_config', return_value=mock_config), \
@@ -206,7 +206,7 @@ def test_fastapi_integration():
     
     try:
         # Import the auth module
-        from src.utils.auth import verify_jwt_token
+        from vyuu_copilot_v2.utils.auth import verify_jwt_token
         
         # Test FastAPI dependency
         with patch('src.utils.auth.get_auth_manager') as mock_get_auth_manager, \
@@ -217,7 +217,7 @@ def test_fastapi_integration():
             mock_auth_manager = Mock()
             mock_auth_manager.config = mock_config
             mock_auth_manager.extract_token_from_header.return_value = token
-            from src.utils.auth import TokenValidationError
+            from vyuu_copilot_v2.utils.auth import TokenValidationError
             mock_auth_manager.verify_supabase_jwt.side_effect = TokenValidationError("Not a Supabase token")
             mock_auth_manager.verify_custom_jwt.return_value = {
                 "user_id": test_user_id,

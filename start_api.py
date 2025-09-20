@@ -15,7 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.config.settings import get_config
+from vyuu_copilot_v2.config.settings import get_config
 
 # Configure logging
 logging.basicConfig(
@@ -40,7 +40,7 @@ def main():
         
         # Start the server
         uvicorn.run(
-            "src.api:app",
+            "vyuu_copilot_v2.api:app",
             host=config.api.host,
             port=config.api.port,
             reload=config.api.debug,

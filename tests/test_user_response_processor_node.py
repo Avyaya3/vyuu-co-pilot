@@ -11,14 +11,14 @@ from datetime import datetime
 from typing import Dict, Any, List
 from uuid import uuid4
 
-from src.nodes.user_response_processor_node import (
+from vyuu_copilot_v2.nodes.user_response_processor_node import (
     user_response_processor_node,
     UserResponseProcessor,
     ValueValidator,
     ResponseParsingResult,
     ValidationResult,
 )
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 
 @pytest.fixture

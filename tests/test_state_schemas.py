@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from pydantic import ValidationError
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     BaseState,
     MainState,
     ClarificationState,

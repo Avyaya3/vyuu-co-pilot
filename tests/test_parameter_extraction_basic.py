@@ -9,13 +9,13 @@ import pytest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from src.nodes.parameter_extraction_node import (
+from vyuu_copilot_v2.nodes.parameter_extraction_node import (
     ParameterExtractor,
     ParameterNormalizer,
     ParameterValidator
 )
-from src.schemas.state_schemas import OrchestratorState, IntentType, StateTransitions, MainState
-from src.schemas.generated_intent_schemas import DataFetchParams, ActionParams
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType, StateTransitions, MainState
+from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, ActionParams
 
 
 class TestBasicParameterExtraction:
@@ -316,7 +316,7 @@ class TestSchemaIntegration:
     
     def test_data_fetch_schema_integration(self):
         """Test parameter extraction with DataFetchParams schema."""
-        from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
+        from vyuu_copilot_v2.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
         
         # Get schema for DATA_FETCH intent
         schema = get_pydantic_model_for_intent(IntentType.DATA_FETCH)
@@ -333,7 +333,7 @@ class TestSchemaIntegration:
     
     def test_action_schema_integration(self):
         """Test parameter extraction with ActionParams schema."""
-        from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
+        from vyuu_copilot_v2.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
         
         # Get schema for ACTION intent
         schema = get_pydantic_model_for_intent(IntentType.ACTION)

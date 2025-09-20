@@ -19,7 +19,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from .base import ToolResponse
-from src.utils.data_extractor import FinancialDataExtractor, create_data_extractor
+from vyuu_copilot_v2.utils.data_extractor import FinancialDataExtractor, create_data_extractor
 
 logger = logging.getLogger(__name__)
 

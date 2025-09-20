@@ -10,9 +10,9 @@ import logging
 from typing import Dict, Any, Optional, Set, Literal, Tuple, Union
 from decimal import Decimal, InvalidOperation
 
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.utils.parameter_config import get_parameter_config
-from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
+from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 
 logger = logging.getLogger(__name__)
 

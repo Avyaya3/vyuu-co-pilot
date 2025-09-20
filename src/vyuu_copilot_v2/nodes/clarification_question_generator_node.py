@@ -1,8 +1,8 @@
 import logging
 import re
 from typing import List, Dict, Any, Optional, Set, Union, Literal
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.utils.llm_client import LLMClient
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.utils.llm_client import LLMClient
 import asyncio
 
 logger = logging.getLogger(__name__)

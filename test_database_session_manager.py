@@ -27,9 +27,9 @@ def test_database_session_manager():
     
     try:
         # Import the modules
-        from src.utils.database_session_manager import DatabaseSessionManager
-        from src.schemas.state_schemas import MainState, MessageManager
-        from src.schemas.database_models import ConversationSessionCreate
+        from vyuu_copilot_v2.utils.database_session_manager import DatabaseSessionManager
+        from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager
+        from vyuu_copilot_v2.schemas.database_models import ConversationSessionCreate
         
         # Mock the database client and repository
         with patch('src.utils.database_session_manager.ConversationSessionRepository') as mock_repo_class:
@@ -44,7 +44,7 @@ def test_database_session_manager():
             test_user_id = "test-user-123"
             
             # Create test messages
-            from src.schemas.state_schemas import Message, MessageRole
+            from vyuu_copilot_v2.schemas.state_schemas import Message, MessageRole
             messages = [
                 Message(
                     role=MessageRole.USER,
@@ -58,7 +58,7 @@ def test_database_session_manager():
                 )
             ]
             
-            from src.schemas.state_schemas import IntentType
+            from vyuu_copilot_v2.schemas.state_schemas import IntentType
             test_state = MainState(
                 user_input="Hello, I need help with my finances",
                 session_id=test_session_id,
@@ -254,7 +254,7 @@ def test_orchestrator_database_integration():
     
     try:
         # Import the modules
-        from src.orchestrator import MainOrchestrator
+        from vyuu_copilot_v2.orchestrator import MainOrchestrator
         
         # Mock the database session manager
         with patch('src.utils.database_session_manager.DatabaseSessionManager') as mock_db_manager_class:

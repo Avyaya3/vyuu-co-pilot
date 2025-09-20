@@ -15,8 +15,8 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from src.nodes.user_response_processor_node import user_response_processor_node
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.user_response_processor_node import user_response_processor_node
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 # Load environment variables
 load_dotenv()

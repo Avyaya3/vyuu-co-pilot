@@ -12,8 +12,8 @@ import uuid
 import os
 from datetime import datetime, timezone
 
-from src.schemas.state_schemas import ClarificationState, IntentType, Message, MessageRole
-from src.nodes.missing_param_analysis_node import missing_param_analysis_node
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType, Message, MessageRole
+from vyuu_copilot_v2.nodes.missing_param_analysis_node import missing_param_analysis_node
 
 
 def print_state_comparison(before: ClarificationState, after: ClarificationState):

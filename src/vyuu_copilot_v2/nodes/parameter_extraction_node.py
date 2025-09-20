@@ -14,10 +14,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 from decimal import Decimal, InvalidOperation
 
-from src.schemas.state_schemas import OrchestratorState, IntentType, MessageManager, MainState
-from src.schemas.generated_intent_schemas import INTENT_PARAM_MODELS, IntentCategory
-from src.utils.llm_client import LLMClient
-from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType, MessageManager, MainState
+from vyuu_copilot_v2.schemas.generated_intent_schemas import INTENT_PARAM_MODELS, IntentCategory
+from vyuu_copilot_v2.utils.llm_client import LLMClient
+from vyuu_copilot_v2.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
 
 logger = logging.getLogger(__name__)
 
@@ -529,7 +529,7 @@ async def parameter_extraction_node(state: MainState) -> OrchestratorState:
     
     try:
         # Convert MainState to OrchestratorState (first node in subgraph)
-        from src.schemas.state_schemas import StateTransitions
+        from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
         orchestrator_state = StateTransitions.to_orchestrator_state(state)
         
         # Add system message for tracking
@@ -623,11 +623,11 @@ async def parameter_extraction_node(state: MainState) -> OrchestratorState:
         
         # Convert to orchestrator state for error handling
         try:
-            from src.schemas.state_schemas import StateTransitions
+            from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
             error_orchestrator_state = StateTransitions.to_orchestrator_state(state)
         except Exception:
             # If state conversion fails, create minimal orchestrator state
-            from src.schemas.state_schemas import OrchestratorState
+            from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState
             error_orchestrator_state = OrchestratorState(
                 **state.model_dump(),
                 extracted_params={},

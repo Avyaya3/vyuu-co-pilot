@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import the orchestrator
-from src.orchestrator import MainOrchestrator
+from vyuu_copilot_v2.orchestrator import MainOrchestrator
 
 
 async def demo_pause_resume_flow():

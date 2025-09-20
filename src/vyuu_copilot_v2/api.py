@@ -16,9 +16,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 from contextlib import asynccontextmanager
 
-from src.orchestrator import MainOrchestrator
-from src.config.settings import AppConfig, get_config
-from src.utils.auth import verify_jwt_token, get_current_user, get_auth_manager, TokenValidationError
+from vyuu_copilot_v2.orchestrator import MainOrchestrator
+from vyuu_copilot_v2.config.settings import AppConfig, get_config
+from vyuu_copilot_v2.utils.auth import verify_jwt_token, get_current_user, get_auth_manager, TokenValidationError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -215,7 +215,7 @@ async def refresh_token(request: TokenRefreshRequest):
         
         # Decode the new token to get user information
         import jwt
-        from src.config.settings import get_config
+        from vyuu_copilot_v2.config.settings import get_config
         
         config = get_config()
         payload = jwt.decode(

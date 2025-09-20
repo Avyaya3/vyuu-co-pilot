@@ -11,8 +11,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.repositories import RepositoryFactory
-from src.schemas.database_models import User
+from vyuu_copilot_v2.repositories import RepositoryFactory
+from vyuu_copilot_v2.schemas.database_models import User
 
 
 async def verify_test_user():

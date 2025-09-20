@@ -15,10 +15,10 @@ from decimal import Decimal, InvalidOperation
 
 import openai
 
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.utils.llm_client import LLMClient
-from src.utils.parameter_config import get_parameter_config
-from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.utils.llm_client import LLMClient
+from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
+from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +501,7 @@ class UserResponseProcessor:
             Dictionary mapping slot names to their types
         """
         # Import the helper function to get Pydantic model from auto-generated registry
-        from src.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
+        from vyuu_copilot_v2.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
         
         slot_types = {}
         pydantic_model = get_pydantic_model_for_intent(intent)

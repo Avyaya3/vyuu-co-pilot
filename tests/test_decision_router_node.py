@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 import uuid
 
 # Import modules to test
-from src.nodes.decision_router_node import (
+from vyuu_copilot_v2.nodes.decision_router_node import (
     DecisionRouter,
     RouterConfig,
     RoutingResult,
@@ -20,8 +20,8 @@ from src.nodes.decision_router_node import (
     decision_router_node,
     get_routing_decision
 )
-from src.schemas.state_schemas import MainState, IntentType, MessageRole, Message
-from src.schemas.generated_intent_schemas import ConfidenceLevel
+from vyuu_copilot_v2.schemas.state_schemas import MainState, IntentType, MessageRole, Message
+from vyuu_copilot_v2.schemas.generated_intent_schemas import ConfidenceLevel
 
 
 class TestRouterConfig:

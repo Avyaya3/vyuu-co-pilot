@@ -20,18 +20,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import the modules we're testing
-from src.schemas.state_schemas import MainState, ClarificationState, IntentType, MessageRole
-from src.nodes.missing_param_analysis_node import (
+from vyuu_copilot_v2.schemas.state_schemas import MainState, ClarificationState, IntentType, MessageRole
+from vyuu_copilot_v2.nodes.missing_param_analysis_node import (
     normalize_parameter_priorities, 
     normalize_missing_params,
     missing_param_analysis_node
 )
-from src.subgraphs.clarification_subgraph import (
+from vyuu_copilot_v2.subgraphs.clarification_subgraph import (
     reconstruct_state_from_dict,
     clarification_entry_wrapper,
     clarification_exit_wrapper
 )
-from src.subgraphs.direct_orchestrator_subgraph import (
+from vyuu_copilot_v2.subgraphs.direct_orchestrator_subgraph import (
     orchestrator_entry_wrapper,
     orchestrator_exit_wrapper
 )

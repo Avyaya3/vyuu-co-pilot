@@ -12,13 +12,13 @@ from datetime import datetime
 from typing import Dict, Any
 from uuid import uuid4
 
-from src.nodes.completeness_validator_node import (
+from vyuu_copilot_v2.nodes.completeness_validator_node import (
     completeness_validator_node,
     CompletenessValidator,
     CompletenessStatus,
     ValidationResult,
 )
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 
 @pytest.fixture

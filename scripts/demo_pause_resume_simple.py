@@ -15,9 +15,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import the key components
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.nodes.clarification_question_generator_node import clarification_question_generator_node
-from src.orchestrator import MainOrchestrator
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.clarification_question_generator_node import clarification_question_generator_node
+from vyuu_copilot_v2.orchestrator import MainOrchestrator
 
 
 async def demo_question_generator_pause():
@@ -143,7 +143,7 @@ async def demo_orchestrator_pause_detection():
     orchestrator = MainOrchestrator(use_database=False)
     
     # Test with metadata-based pause detection
-    from src.schemas.state_schemas import MainState
+    from vyuu_copilot_v2.schemas.state_schemas import MainState
     
     metadata_paused_state = MainState(
         user_input="Transfer money",
@@ -207,7 +207,7 @@ async def demo_response_formatting():
     orchestrator = MainOrchestrator(use_database=False)
     
     # Create a state with pending question in metadata
-    from src.schemas.state_schemas import MainState
+    from vyuu_copilot_v2.schemas.state_schemas import MainState
     
     paused_state = MainState(
         user_input="Transfer money",

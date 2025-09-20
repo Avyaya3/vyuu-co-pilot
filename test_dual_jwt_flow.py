@@ -30,9 +30,9 @@ def test_dual_jwt_flow():
     
     try:
         # Import the modules
-        from src.utils.auth import SupabaseAuth, verify_jwt_token
-        from src.orchestrator import MainOrchestrator
-        from src.tools.db_query import DbQueryTool
+        from vyuu_copilot_v2.utils.auth import SupabaseAuth, verify_jwt_token
+        from vyuu_copilot_v2.orchestrator import MainOrchestrator
+        from vyuu_copilot_v2.tools.db_query import DbQueryTool
         
         # Mock configuration
         mock_config = Mock()
@@ -204,7 +204,7 @@ def test_supabase_jwt_minting():
     print("=" * 60)
     
     try:
-        from src.utils.auth import SupabaseAuth
+        from vyuu_copilot_v2.utils.auth import SupabaseAuth
         
         # Mock configuration
         mock_config = Mock()

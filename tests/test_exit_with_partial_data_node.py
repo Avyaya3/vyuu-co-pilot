@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch
 from uuid import uuid4
-from src.nodes.exit_with_partial_data_node import exit_with_partial_data_node
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.exit_with_partial_data_node import exit_with_partial_data_node
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 
 class TestExitWithPartialDataNode:

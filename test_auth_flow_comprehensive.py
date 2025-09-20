@@ -17,10 +17,10 @@ import jwt
 from datetime import datetime, timedelta, timezone
 
 # Import the modules we need to test
-from src.api import app
-from src.utils.auth import SupabaseAuth, verify_jwt_token, get_current_user, TokenValidationError
-from src.orchestrator import MainOrchestrator, SessionManager
-from src.schemas.state_schemas import MainState
+from vyuu_copilot_v2.api import app
+from vyuu_copilot_v2.utils.auth import SupabaseAuth, verify_jwt_token, get_current_user, TokenValidationError
+from vyuu_copilot_v2.orchestrator import MainOrchestrator, SessionManager
+from vyuu_copilot_v2.schemas.state_schemas import MainState
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

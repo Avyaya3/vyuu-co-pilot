@@ -8,7 +8,7 @@ import os
 from typing import Dict, Any, Optional
 from uuid import uuid4
 
-from src.orchestrator import MainOrchestrator
+from vyuu_copilot_v2.orchestrator import MainOrchestrator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

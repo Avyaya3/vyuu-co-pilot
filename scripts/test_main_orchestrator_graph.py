@@ -21,8 +21,8 @@ import logging
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from src.schemas.state_schemas import MainState, IntentType
-from src.graphs.main_orchestrator_graph import (
+from vyuu_copilot_v2.schemas.state_schemas import MainState, IntentType
+from vyuu_copilot_v2.graphs.main_orchestrator_graph import (
     main_orchestrator_graph,
     user_input_processor,
     final_response_formatter,

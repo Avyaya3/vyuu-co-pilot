@@ -11,14 +11,14 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
 
-from src.nodes.parameter_extraction_node import (
+from vyuu_copilot_v2.nodes.parameter_extraction_node import (
     parameter_extraction_node,
     ParameterExtractor,
     ParameterNormalizer,
     ParameterValidator
 )
-from src.schemas.state_schemas import OrchestratorState, IntentType, StateTransitions, MainState, MessageRole
-from src.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType, StateTransitions, MainState, MessageRole
+from vyuu_copilot_v2.schemas.generated_intent_schemas import DataFetchParams, AggregateParams, ActionParams
 
 
 class TestParameterNormalizer:

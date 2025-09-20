@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 import openai
 from dotenv import load_dotenv
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     MainState,
     MessageManager,
     IntentType,
     ConversationContext,
 )
-from src.schemas.generated_intent_schemas import (
+from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     IntentClassificationResult,
     IntentClassificationError,
     FallbackIntentResult,
@@ -29,7 +29,7 @@ from src.schemas.generated_intent_schemas import (
     AggregateParams,
     ActionParams,
 )
-from src.utils.llm_client import LLMClient
+from vyuu_copilot_v2.utils.llm_client import LLMClient
 
 # Load environment variables
 load_dotenv()

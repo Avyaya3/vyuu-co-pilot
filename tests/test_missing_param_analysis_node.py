@@ -2,8 +2,8 @@ import pytest
 import asyncio
 import json
 from unittest.mock import patch, AsyncMock
-from src.nodes.missing_param_analysis_node import missing_param_analysis_node
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.missing_param_analysis_node import missing_param_analysis_node
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 @pytest.mark.asyncio
 class TestMissingParamAnalysisNode:

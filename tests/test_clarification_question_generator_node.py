@@ -2,8 +2,8 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.nodes.clarification_question_generator_node import (
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.clarification_question_generator_node import (
     clarification_question_generator_node,
     ClarificationQuestionGenerator,
     QuestionTemplate

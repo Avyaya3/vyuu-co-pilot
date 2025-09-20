@@ -25,7 +25,7 @@ import logging
 from typing import List, Dict, Any
 from uuid import uuid4
 
-from src.orchestrator import main_orchestrator
+from vyuu_copilot_v2.orchestrator import main_orchestrator
 
 # Configure logging for demo
 logging.basicConfig(level=logging.WARNING)  # Reduce noise for demo

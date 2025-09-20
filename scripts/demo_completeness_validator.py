@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any
 from uuid import uuid4
 
-from src.nodes.completeness_validator_node import completeness_validator_node
-from src.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.completeness_validator_node import completeness_validator_node
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
 
 # Configure logging
 logging.basicConfig(

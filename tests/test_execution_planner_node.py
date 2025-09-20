@@ -10,7 +10,7 @@ import json
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
 
-from src.nodes.execution_planner_node import (
+from vyuu_copilot_v2.nodes.execution_planner_node import (
     execution_planner_node,
     _generate_llm_draft_plan,
     _validate_and_sanitize_plan,
@@ -18,8 +18,8 @@ from src.nodes.execution_planner_node import (
     _create_fallback_plan,
     INTENT_OPERATION_MAPPING
 )
-from src.schemas.state_schemas import OrchestratorState, PlanStep, ExecutionPlan
-from src.schemas.generated_intent_schemas import IntentCategory
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, PlanStep, ExecutionPlan
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory
 
 
 @pytest.fixture

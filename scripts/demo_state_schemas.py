@@ -17,7 +17,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     BaseState,
     MainState,
     ClarificationState,

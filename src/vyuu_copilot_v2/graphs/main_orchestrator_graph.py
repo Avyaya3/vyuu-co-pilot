@@ -27,11 +27,11 @@ from typing import Dict, Any, Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.schemas.state_schemas import MainState, MessageManager
-from src.nodes.intent_classification_node import intent_classification_node
-from src.nodes.decision_router_node import decision_router_node, get_routing_decision
-from src.subgraphs.clarification_subgraph import clarification_subgraph
-from src.subgraphs.direct_orchestrator_subgraph import direct_orchestrator_subgraph
+from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager
+from vyuu_copilot_v2.nodes.intent_classification_node import intent_classification_node
+from vyuu_copilot_v2.nodes.decision_router_node import decision_router_node, get_routing_decision
+from vyuu_copilot_v2.subgraphs.clarification_subgraph import clarification_subgraph
+from vyuu_copilot_v2.subgraphs.direct_orchestrator_subgraph import direct_orchestrator_subgraph
 
 logger = logging.getLogger(__name__)
 

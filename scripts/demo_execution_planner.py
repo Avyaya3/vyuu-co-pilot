@@ -23,9 +23,9 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.nodes.execution_planner_node import execution_planner_node
-from src.schemas.state_schemas import OrchestratorState, ExecutionPlan
-from src.schemas.generated_intent_schemas import IntentCategory
+from vyuu_copilot_v2.nodes.execution_planner_node import execution_planner_node
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, ExecutionPlan
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory
 
 
 def print_section(title: str):
@@ -255,7 +255,7 @@ def demo_tool_registry_integration():
     print_section("Demo 5: Tool Registry Integration")
     
     print("\n🛠️  Available Tools from Registry:")
-    from src.tools import get_tool_info
+    from vyuu_copilot_v2.tools import get_tool_info
     
     tool_info = get_tool_info()
     for tool_name, info in tool_info.items():

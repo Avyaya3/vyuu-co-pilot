@@ -27,17 +27,17 @@ from typing import Dict, Any, Literal, Union
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     MainState, 
     ClarificationState, 
     StateTransitions,
     MessageManager
 )
-from src.nodes.missing_param_analysis_node import missing_param_analysis_node
-from src.nodes.clarification_question_generator_node import clarification_question_generator_node
-from src.nodes.user_response_processor_node import user_response_processor_node
-from src.nodes.completeness_validator_node import completeness_validator_node
-from src.nodes.exit_with_partial_data_node import exit_with_partial_data_node
+from vyuu_copilot_v2.nodes.missing_param_analysis_node import missing_param_analysis_node
+from vyuu_copilot_v2.nodes.clarification_question_generator_node import clarification_question_generator_node
+from vyuu_copilot_v2.nodes.user_response_processor_node import user_response_processor_node
+from vyuu_copilot_v2.nodes.completeness_validator_node import completeness_validator_node
+from vyuu_copilot_v2.nodes.exit_with_partial_data_node import exit_with_partial_data_node
 
 logger = logging.getLogger(__name__)
 

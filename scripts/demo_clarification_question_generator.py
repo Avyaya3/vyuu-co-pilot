@@ -16,8 +16,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import the node and related components
-from src.schemas.state_schemas import ClarificationState, IntentType
-from src.nodes.clarification_question_generator_node import (
+from vyuu_copilot_v2.schemas.state_schemas import ClarificationState, IntentType
+from vyuu_copilot_v2.nodes.clarification_question_generator_node import (
     clarification_question_generator_node,
     ClarificationQuestionGenerator,
     QuestionTemplate

@@ -27,8 +27,8 @@ def test_complete_auth_flow():
     
     try:
         # Import the modules
-        from src.utils.auth import SupabaseAuth, verify_jwt_token
-        from src.orchestrator import MainOrchestrator
+        from vyuu_copilot_v2.utils.auth import SupabaseAuth, verify_jwt_token
+        from vyuu_copilot_v2.orchestrator import MainOrchestrator
         
         # Mock configuration
         mock_config = Mock()
@@ -216,7 +216,7 @@ def test_database_session_persistence():
         # This test would require actual database setup
         # For now, we'll test the orchestrator's ability to use database sessions
         
-        from src.orchestrator import MainOrchestrator
+        from vyuu_copilot_v2.orchestrator import MainOrchestrator
         
         # Test that orchestrator can be initialized with database sessions
         # (This will fall back to in-memory if database is not available)

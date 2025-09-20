@@ -23,16 +23,16 @@ from typing import Dict, Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.schemas.state_schemas import (
+from vyuu_copilot_v2.schemas.state_schemas import (
     MainState,
     OrchestratorState, 
     StateTransitions,
     MessageManager
 )
-from src.nodes.parameter_extraction_node import parameter_extraction_node
-from src.nodes.execution_planner_node import execution_planner_node
-from src.nodes.tool_execution_node import tool_execution_node
-from src.nodes.response_synthesis_node import response_synthesis_node
+from vyuu_copilot_v2.nodes.parameter_extraction_node import parameter_extraction_node
+from vyuu_copilot_v2.nodes.execution_planner_node import execution_planner_node
+from vyuu_copilot_v2.nodes.tool_execution_node import tool_execution_node
+from vyuu_copilot_v2.nodes.response_synthesis_node import response_synthesis_node
 
 logger = logging.getLogger(__name__)
 

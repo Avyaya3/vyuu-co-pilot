@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from src.schemas.state_schemas import OrchestratorState, IntentType
-from src.schemas.generated_intent_schemas import IntentCategory
-from src.tools.base import ToolResponse
-from src.nodes.tool_execution_node import (
+from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory
+from vyuu_copilot_v2.tools.base import ToolResponse
+from vyuu_copilot_v2.nodes.tool_execution_node import (
     tool_execution_node,
     ExecutionStepResult,
     ToolExecutionError,

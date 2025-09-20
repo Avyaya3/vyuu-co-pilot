@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.schemas.state_schemas import MainState, MessageManager, IntentType
-from src.schemas.generated_intent_schemas import IntentCategory, ConfidenceLevel
-from src.utils.parameter_config import get_parameter_config
+from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager, IntentType
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory, ConfidenceLevel
+from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
 
 logger = logging.getLogger(__name__)
 

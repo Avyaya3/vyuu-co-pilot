@@ -1,21 +1,18 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[project]
+[tool.poetry]
 name = "vyuu-copilot-v2"
 version = "0.1.0"
 description = "LangGraph-based intent orchestration system"
 readme = "README.md"
-requires-python = ">=3.9,<4.0"
-
-authors = [
-    {name = "Vyuu Team"},
+authors = ["Vyuu Team"]
+homepage = "https://github.com/vyuu/vyuu-copilot-v2"
+repository = "https://github.com/vyuu/vyuu-copilot-v2"
+packages = [
+    { include = "vyuu_copilot_v2", from = "src" }
 ]
-
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -27,36 +24,29 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-dependencies = [
-    "langgraph>=0.1.0",
-    "langchain>=0.1.0",
-    "supabase>=2.0.0",
-    "pydantic>=2.0.0",
-    "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.20.0",
-    "pytest>=7.0.0",
-    "python-dotenv>=1.0.0",
-    "asyncpg>=0.28.0",
-    "tenacity>=8.0.0",
-    "pyjwt>=2.8.0",
-    "gotrue>=1.0.0",
-    "openai>=1.0.0",
-    "pyyaml>=6.0.0",
-]
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+langgraph = ">=0.1.0"
+langchain = ">=0.1.0"
+supabase = ">=2.0.0"
+pydantic = ">=2.0.0"
+fastapi = ">=0.100.0"
+uvicorn = {extras = ["standard"], version = ">=0.20.0"}
+pytest = ">=7.0.0"
+python-dotenv = ">=1.0.0"
+asyncpg = ">=0.28.0"
+tenacity = ">=8.0.0"
+pyjwt = ">=2.8.0"
+gotrue = ">=1.0.0"
+openai = ">=1.0.0"
+pyyaml = ">=6.0.0"
 
-[project.optional-dependencies]
-dev = [
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
-    "pre-commit>=3.0.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/vyuu/vyuu-copilot-v2"
-Repository = "https://github.com/vyuu/vyuu-copilot-v2"
-Issues = "https://github.com/vyuu/vyuu-copilot-v2/issues"
+[tool.poetry.group.dev.dependencies]
+black = ">=23.0.0"
+isort = ">=5.12.0"
+flake8 = ">=6.0.0"
+mypy = ">=1.0.0"
+pre-commit = ">=3.0.0"
 
 [tool.black]
 line-length = 88
