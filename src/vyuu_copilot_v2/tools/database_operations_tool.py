@@ -123,6 +123,18 @@ class DatabaseOperationsTool:
             validated_params = DatabaseOperationsParams(**params)
             self.logger.info(f"Executing {validated_params.action_type} operation on {validated_params.entity_type}")
             
+            # Check for required parameters before execution
+            missing_params = self._validate_required_parameters(validated_params)
+            if missing_params:
+                execution_time = (time.time() - start_time) * 1000
+                return {
+                    "success": False,
+                    "error": f"More data required to do this operation. Missing required parameters: {', '.join(missing_params)}",
+                    "tool_name": self.name,
+                    "execution_time_ms": execution_time,
+                    "missing_parameters": missing_params
+                }
+            
             # Execute the appropriate operation
             if validated_params.action_type == "create":
                 result = await self._create_entity(validated_params)
@@ -343,7 +355,7 @@ class DatabaseOperationsTool:
                 RETURNING id
             """
             
-            now = datetime.now().isoformat()
+            now = datetime.now()
             
             # Update source entity
             await self.db_client.execute_query(update_from_query, new_from_balance, now, params.from_entity_id, fetch_one=True)
@@ -432,6 +444,86 @@ class DatabaseOperationsTool:
                     entity_data[db_column_name] = field_value
 
         return entity_data
+    
+    def _validate_required_parameters(self, params: DatabaseOperationsParams) -> List[str]:
+        """
+        Validate that all required parameters are present for the given operation.
+        
+        Args:
+            params: Validated parameters
+            
+        Returns:
+            List of missing required parameter names
+        """
+        missing_params = []
+        
+        # Define required parameters for each entity type and operation
+        required_params = {
+            "savings": {
+                "create": ["name", "type", "current_balance", "interest_rate", "monthly_contribution"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "assets": {
+                "create": ["name", "category", "current_value"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "liabilities": {
+                "create": ["name", "type", "amount"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "income": {
+                "create": ["name", "source", "amount"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "expense": {
+                "create": ["name", "category", "amount"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "stock": {
+                "create": ["name", "current_value"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "insurance": {
+                "create": ["name", "type", "premium", "coverage"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            },
+            "goal": {
+                "create": ["name", "target_amount", "target_date"],
+                "update": ["entity_id"],
+                "delete": ["entity_id"],
+                "transfer": ["from_entity_id", "to_entity_id", "transfer_amount"]
+            }
+        }
+        
+        # Get required parameters for this entity type and action
+        entity_requirements = required_params.get(params.entity_type, {})
+        action_requirements = entity_requirements.get(params.action_type, [])
+        
+        # Check each required parameter
+        for param_name in action_requirements:
+            param_value = getattr(params, param_name, None)
+            if param_value is None or (isinstance(param_value, str) and param_value.strip() == ""):
+                missing_params.append(param_name)
+        
+        # Special validation for user_id - it should be provided in most cases
+        if not params.user_id and params.action_type in ["create", "update"]:
+            missing_params.append("user_id")
+        
+        return missing_params
 
 
 # Create tool instance
