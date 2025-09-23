@@ -233,15 +233,19 @@ Please provide a clear, informative response that addresses the user's request."
         self, state: OrchestratorState, processed_data: Dict[str, Any]
     ) -> str:
         """
-        Generate response for aggregate intents.
+        Generate response for database operations intents.
 
         Args:
             state: Current orchestrator state
             processed_data: Processed tool results
 
         Returns:
-            Generated response for aggregate intent
+            Generated response for database operations intent
         """
+        # Check if any steps failed
+        if processed_data.get("failed_steps", []):
+            return self._generate_action_error_response(processed_data)
+
         try:
             # Get intent-specific guidelines
             intent_guidelines = INTENT_GUIDELINES.get(state.intent, "")
@@ -257,14 +261,14 @@ Please provide a clear, informative response that addresses the user's request."
             )
 
             # Create user prompt
-            user_prompt = f"""Generate an insightful response for this aggregation request:
+            user_prompt = f"""Generate a confirmation response for this database operation request:
 
 User Request: {state.user_input}
 
-Available Data:
+Operation Results:
 {formatted_data}
 
-Please provide analysis, insights, and trends based on the data."""
+Please confirm what was done and provide any relevant next steps."""
 
             # Generate response using LLM
             response = await self.llm_client.generate_response(
@@ -275,8 +279,8 @@ Please provide analysis, insights, and trends based on the data."""
             return response
 
         except Exception as e:
-            logger.error(f"LLM-based aggregate response generation failed: {e}")
-            return self._generate_template_aggregate_response(processed_data)
+            logger.error(f"LLM-based database operations response generation failed: {e}")
+            return self._generate_template_database_operations_response(processed_data)
 
     async def _generate_advice_response(
         self, state: OrchestratorState, processed_data: Dict[str, Any]
@@ -509,6 +513,27 @@ Please provide a helpful, conversational response that addresses the user's requ
             error_messages.append(f"- {error}")
 
         return f"I'm sorry, but the requested action couldn't be completed.\n\nErrors encountered:\n" + "\n".join(error_messages) + "\n\nPlease check your information and try again."
+
+    def _generate_template_database_operations_response(self, processed_data: Dict[str, Any]) -> str:
+        """
+        Generate template response for database operations when LLM fails.
+        
+        Args:
+            processed_data: Processed tool results
+            
+        Returns:
+            Template response string
+        """
+        execution_summary = processed_data.get("execution_summary", {})
+        successful_steps = execution_summary.get("successful_steps", 0)
+        failed_steps = execution_summary.get("failed_steps", 0)
+        
+        if successful_steps > 0 and failed_steps == 0:
+            return "Your database operation has been completed successfully."
+        elif successful_steps > 0 and failed_steps > 0:
+            return f"Your database operation was partially completed. {successful_steps} operations succeeded, but {failed_steps} operations failed."
+        else:
+            return "I'm sorry, but the database operation could not be completed. Please check your information and try again."
 
     def _generate_fallback_response(
         self, state: OrchestratorState, tool_results: Dict[str, Any]

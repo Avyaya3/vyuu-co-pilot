@@ -39,6 +39,7 @@ class DatabaseOperationsParams(BaseModel):
         "income",
         "expense",
         "stock",
+        "investment",
         "insurance",
         "goal"
     ] = Field(description="Type of financial entity")
@@ -179,7 +180,7 @@ class DatabaseOperationsTool:
         if params.user_id:
             entity_data["userId"] = params.user_id
         
-        # Add timestamps
+        # Add timestamps (timezone-naive for database compatibility)
         now = datetime.now()
         entity_data["createdAt"] = now
         entity_data["updatedAt"] = now
@@ -226,7 +227,7 @@ class DatabaseOperationsTool:
         
         entity_data = self._build_entity_data(params)
         
-        # Add updated timestamp
+        # Add updated timestamp (timezone-naive for database compatibility)
         entity_data["updatedAt"] = datetime.now()
         
         # Build UPDATE query
@@ -394,8 +395,10 @@ class DatabaseOperationsTool:
             'expenses': 'expenses',
             'goal': 'goals',
             'goals': 'goals',
-            'stock': 'stocks',
-            'stocks': 'stocks',
+            'stock': 'investments',  # Fixed: stocks table doesn't exist, use investments
+            'stocks': 'investments',  # Fixed: stocks table doesn't exist, use investments
+            'investment': 'investments',  # Added: direct mapping for investments
+            'investments': 'investments',  # Added: direct mapping for investments
             'insurance': 'insurances',
             'insurances': 'insurances'
         }
@@ -423,26 +426,92 @@ class DatabaseOperationsTool:
             'payment_method': 'paymentMethod'
         }
 
+        # Entity-specific field mappings (override general mappings)
+        entity_specific_mappings = {
+            'investment': {
+                'start_date': 'purchaseDate',  # For investments, start_date maps to purchaseDate
+                'end_date': None,  # For investments, end_date is not used (exclude from insert)
+            },
+            'stock': {
+                'start_date': 'purchaseDate',  # For stocks, start_date maps to purchaseDate
+                'end_date': None,  # For stocks, end_date is not used (exclude from insert)
+            }
+        }
+
         # Date fields that need to be converted to datetime objects
         date_fields = {'purchase_date', 'start_date', 'end_date', 'target_date', 'maturity_date'}
 
         # Add all non-None fields with proper column name mapping
         for field_name, field_value in params.model_dump(exclude_none=True).items():
             if field_name not in ['action_type', 'entity_type', 'entity_id', 'from_entity_id', 'to_entity_id', 'transfer_amount', 'user_id']:
-                # Map snake_case to camelCase if needed
-                db_column_name = field_mapping.get(field_name, field_name)
+                # Get entity-specific mapping first, then fall back to general mapping
+                db_column_name = field_name
                 
-                # Convert date strings to datetime objects
-                if field_name in date_fields and isinstance(field_value, str):
+                # Check entity-specific mappings
+                if params.entity_type in entity_specific_mappings:
+                    entity_mapping = entity_specific_mappings[params.entity_type]
+                    if field_name in entity_mapping:
+                        db_column_name = entity_mapping[field_name]
+                        # If mapped to None, skip this field entirely
+                        if db_column_name is None:
+                            self.logger.info(f"Skipping {field_name} (mapped to None)")
+                            continue
+                    elif field_name in field_mapping:
+                        db_column_name = field_mapping[field_name]
+                else:
+                    # Use general mapping
+                    db_column_name = field_mapping.get(field_name, field_name)
+                
+                self.logger.info(f"Processing field {field_name} -> {db_column_name}, value: {field_value}, type: {type(field_value)}")
+                
+                # Convert date strings/datetime objects to timezone-aware datetime objects
+                if field_name in date_fields:
                     try:
-                        from datetime import datetime
-                        entity_data[db_column_name] = datetime.fromisoformat(field_value.replace('Z', '+00:00'))
-                    except ValueError:
+                        from datetime import datetime, timezone
+                        
+                        if isinstance(field_value, str):
+                            # Parse the date string
+                            if field_value.endswith('Z'):
+                                # Handle UTC timezone
+                                dt = datetime.fromisoformat(field_value.replace('Z', '+00:00'))
+                            elif '+' in field_value or field_value.endswith('00:00'):
+                                # Handle timezone-aware strings
+                                dt = datetime.fromisoformat(field_value)
+                            else:
+                                # Handle timezone-naive strings (keep timezone-naive for database compatibility)
+                                dt = datetime.fromisoformat(field_value)
+                        elif isinstance(field_value, datetime):
+                            # Handle datetime objects
+                            if field_value.tzinfo is None:
+                                # Keep timezone-naive datetime as is (database expects this)
+                                dt = field_value
+                            else:
+                                # Convert timezone-aware to timezone-naive (database expects this)
+                                dt = field_value.replace(tzinfo=None)
+                        else:
+                            # Not a string or datetime, keep as is
+                            dt = field_value
+                        
+                        self.logger.info(f"Converted {field_name} to timezone-aware datetime: {dt}")
+                        entity_data[db_column_name] = dt
+                    except (ValueError, TypeError) as e:
                         # If parsing fails, keep the original value
+                        self.logger.warning(f"Failed to parse date {field_name}: {field_value}, error: {e}")
                         entity_data[db_column_name] = field_value
                 else:
+                    self.logger.info(f"Not a date field or not a string: {field_name} in date_fields: {field_name in date_fields}, is string: {isinstance(field_value, str)}")
                     entity_data[db_column_name] = field_value
 
+        # Calculate returns for investments if not provided but amount and current_value are available
+        if params.entity_type in ['investment', 'stock'] and 'returns' not in entity_data:
+            if 'amount' in entity_data and 'currentValue' in entity_data:
+                amount = entity_data['amount']
+                current_value = entity_data['currentValue']
+                if amount > 0:
+                    returns_percentage = ((current_value - amount) / amount) * 100
+                    entity_data['returns'] = round(returns_percentage, 2)
+                    self.logger.info(f"Calculated returns: {returns_percentage:.2f}% for investment")
+        
         return entity_data
     
     def _validate_required_parameters(self, params: DatabaseOperationsParams) -> List[str]:
