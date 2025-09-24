@@ -128,7 +128,7 @@ intent_parameters:
         description: "Subcategory for the entity"
       - name: "type"
         type: "str"
-        description: "Type for the entity"
+        description: "Type for the entity (for liabilities: mortgage, loan, credit_card, personal_loan, etc.; for savings: checking, savings, high_yield, etc.; for assets: real_estate, vehicle, investment, etc.)"
       - name: "provider"
         type: "str"
         description: "Provider for the entity"
@@ -204,6 +204,19 @@ intent_parameters:
       - name: "current"
         type: "int"
         description: "Current amount for goals (in cents)"
+      - name: "from_entity_id"
+        type: "str"
+        description: "Source entity ID for transfers"
+      - name: "to_entity_id"
+        type: "str"
+        description: "Destination entity ID for transfers"
+      - name: "transfer_amount"
+        type: "int"
+        description: "Transfer amount in cents"
+        constraints: {"ge": 0}
+      - name: "user_id"
+        type: "str"
+        description: "User ID for the operation"
     description: "Execute database operations (create, update, delete) on financial entities"
 
   advice:

@@ -10,88 +10,17 @@ This tool handles all database modification operations:
 
 import time
 import logging
-from typing import Dict, Any, Literal, Optional, List
+from typing import Dict, Any, Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
 
 from .base import ToolResponse, ToolInterface
 from vyuu_copilot_v2.utils.database import get_db_client
+from vyuu_copilot_v2.schemas.generated_intent_schemas import DatabaseOperationsParams
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseOperationsParams(BaseModel):
-    """
-    Parameters for database operations (create, update, delete).
-    """
-    
-    action_type: Literal[
-        "create",
-        "update", 
-        "delete",
-        "transfer"
-    ] = Field(description="Type of database operation to perform")
-    
-    entity_type: Literal[
-        "asset",
-        "liability",
-        "savings",
-        "income",
-        "expense",
-        "stock",
-        "investment",
-        "insurance",
-        "goal"
-    ] = Field(description="Type of financial entity")
-    
-    # Entity identification
-    entity_id: Optional[str] = Field(None, description="Entity ID for update/delete operations")
-    
-    # Common entity fields
-    name: Optional[str] = Field(None, description="Name of the entity")
-    description: Optional[str] = Field(None, description="Description of the entity")
-    category: Optional[str] = Field(None, description="Category of the entity")
-    subcategory: Optional[str] = Field(None, description="Subcategory of the entity")
-    type: Optional[str] = Field(None, description="Type of the entity")
-    provider: Optional[str] = Field(None, description="Provider of the entity")
-    
-    # Financial fields
-    amount: Optional[int] = Field(None, description="Amount in cents", ge=0)
-    current_value: Optional[int] = Field(None, description="Current value in cents", ge=0)
-    purchase_value: Optional[int] = Field(None, description="Purchase value in cents", ge=0)
-    target_amount: Optional[int] = Field(None, description="Target amount in cents", ge=0)
-    current_balance: Optional[int] = Field(None, description="Current balance in cents", ge=0)
-    premium: Optional[int] = Field(None, description="Premium amount in cents", ge=0)
-    coverage: Optional[int] = Field(None, description="Coverage amount in cents", ge=0)
-    emi: Optional[int] = Field(None, description="EMI amount in cents", ge=0)
-    monthly_contribution: Optional[int] = Field(None, description="Monthly contribution in cents", ge=0)
-    
-    # Rate fields
-    interest_rate: Optional[float] = Field(None, description="Interest rate percentage")
-    returns: Optional[float] = Field(None, description="Returns percentage")
-    
-    # Date fields
-    date: Optional[datetime] = Field(None, description="Date of the entity")
-    start_date: Optional[datetime] = Field(None, description="Start date")
-    end_date: Optional[datetime] = Field(None, description="End date")
-    target_date: Optional[datetime] = Field(None, description="Target date")
-    purchase_date: Optional[datetime] = Field(None, description="Purchase date")
-    maturity_date: Optional[datetime] = Field(None, description="Maturity date")
-    
-    # Specific fields
-    source: Optional[str] = Field(None, description="Income source")
-    frequency: Optional[str] = Field(None, description="Frequency (monthly, quarterly, yearly)")
-    payment_method: Optional[str] = Field(None, description="Payment method")
-    priority: Optional[str] = Field(None, description="Priority level")
-    policy_number: Optional[str] = Field(None, description="Insurance policy number")
-    
-    # Transfer specific fields
-    from_entity_id: Optional[str] = Field(None, description="Source entity ID for transfers")
-    to_entity_id: Optional[str] = Field(None, description="Destination entity ID for transfers")
-    transfer_amount: Optional[int] = Field(None, description="Transfer amount in cents", ge=0)
-    
-    # User context
-    user_id: Optional[str] = Field(None, description="User ID for the operation")
+# DatabaseOperationsParams is now imported from generated_intent_schemas
 
 
 class DatabaseOperationsTool:

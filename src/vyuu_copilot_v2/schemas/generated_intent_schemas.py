@@ -1,7 +1,7 @@
 """
 Auto-generated Intent Schemas from YAML Configuration.
 
-Generated on: 2025-09-20T18:07:52.190618
+Generated on: 2025-09-24T11:33:15.905675
 Source: /Users/manjiripathak/Avyaya/vyuu-copilot-v2/config/intent_parameters.yaml
 
 DO NOT EDIT MANUALLY - Run scripts/generate_intent_schemas.py to regenerate.
@@ -86,7 +86,7 @@ class DatabaseOperationsParams(BaseModel):
     name: Optional[str] = Field(None, description="Name for the entity")
     category: Optional[str] = Field(None, description="Category for the entity")
     subcategory: Optional[str] = Field(None, description="Subcategory for the entity")
-    type: Optional[str] = Field(None, description="Type for the entity")
+    type: Optional[str] = Field(None, description="Type for the entity (for liabilities: mortgage, loan, credit_card, personal_loan, etc.; for savings: checking, savings, high_yield, etc.; for assets: real_estate, vehicle, investment, etc.)")
     provider: Optional[str] = Field(None, description="Provider for the entity")
     source: Optional[str] = Field(None, description="Source for income")
     frequency: Optional[str] = Field(None, description="Frequency for income")
@@ -112,6 +112,10 @@ class DatabaseOperationsParams(BaseModel):
     emi: Optional[int] = Field(None, description="EMI for liabilities (in cents)")
     target: Optional[int] = Field(None, description="Target amount for goals (in cents)")
     current: Optional[int] = Field(None, description="Current amount for goals (in cents)")
+    from_entity_id: Optional[str] = Field(None, description="Source entity ID for transfers")
+    to_entity_id: Optional[str] = Field(None, description="Destination entity ID for transfers")
+    transfer_amount: Optional[int] = Field(None, description="Transfer amount in cents", ge=0)
+    user_id: Optional[str] = Field(None, description="User ID for the operation")
 
 
 class AdviceParams(BaseModel):
@@ -198,16 +202,6 @@ class FallbackIntentResult(BaseModel):
             user_input_analysis=f"Failed to analyze: '{user_input[:50]}...'" if user_input else "No input provided",
             reasoning=f"Classification failed due to: {type(error).__name__}"
         )
-    
-    @property
-    def extracted_parameters(self) -> Dict[str, Any]:
-        """Get extracted parameters (empty for fallback)."""
-        return {}
-    
-    @property
-    def requires_clarification(self) -> bool:
-        """Check if clarification is needed (always true for fallback)."""
-        return self.clarification_needed
     
     def to_classification_result(self) -> "IntentClassificationResult":
         """Convert to standard IntentClassificationResult."""

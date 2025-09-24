@@ -358,6 +358,28 @@ class ParameterExtractor:
         4. For numeric fields, remove currency symbols and convert to numbers
         5. For list fields, split comma-separated values into arrays
         6. Be thorough and precise in your extraction
+        
+        IMPORTANT FIELD MAPPINGS:
+        - For liabilities: "amount" = principal/loan amount, "emi" = monthly payment
+        - For assets: "current_value" = current worth, "purchase_value" = original cost
+        - For savings: "current_balance" = current amount, "target_amount" = goal amount
+        - For expenses: "amount" = expense amount
+        - For income: "amount" = income amount
+        - For goals: "target" = target amount, "current" = current progress
+        
+        DATE EXTRACTION RULES:
+        - "start_date" = when something begins (e.g., "starting January 1, 2022" → 2022-01-01T00:00:00)
+        - "end_date" = when something ends (e.g., "ending December 31, 2052" → 2052-12-31T00:00:00)
+        - "purchase_date" = when something was bought
+        - "maturity_date" = when something matures/expires
+        - Always extract dates in ISO format: YYYY-MM-DDTHH:MM:SS
+        - Pay careful attention to the order: "starting X, ending Y" means start_date=X, end_date=Y
+        
+        EXAMPLE DATE EXTRACTION:
+        Input: "starting January 1, 2022, ending December 31, 2052"
+        Output: {{"start_date": "2022-01-01T00:00:00", "end_date": "2052-12-31T00:00:00"}}
+        
+        CRITICAL: Extract BOTH dates separately. Do NOT use the same date for both start_date and end_date.
 
         Return a JSON object with this exact structure:
         {{
@@ -479,6 +501,64 @@ class ParameterExtractor:
         
         return normalized
     
+    def fix_liability_dates(self, parameters: Dict[str, Any], user_input: str) -> Dict[str, Any]:
+        """
+        Fix liability date extraction by parsing the user input directly.
+        
+        Args:
+            parameters: Current parameters with potentially incorrect dates
+            user_input: Original user input to parse
+            
+        Returns:
+            Parameters with corrected dates
+        """
+        import re
+        from datetime import datetime
+        
+        # Check if both dates are the same (indicating extraction error)
+        start_date = parameters.get('start_date')
+        end_date = parameters.get('end_date')
+        
+        if start_date and end_date and start_date == end_date:
+            logger.info("Detected duplicate dates in liability extraction, attempting to fix...")
+            
+            # Parse the user input for date patterns
+            # Look for patterns like "starting January 1, 2022" and "ending December 31, 2052"
+            start_pattern = r'starting\s+([^,]+,\s*\d{4})'
+            end_pattern = r'ending\s+([^,]+,\s*\d{4})'
+            
+            start_match = re.search(start_pattern, user_input, re.IGNORECASE)
+            end_match = re.search(end_pattern, user_input, re.IGNORECASE)
+            
+            if start_match and end_match:
+                try:
+                    # Parse the start date
+                    start_date_str = start_match.group(1).strip()
+                    start_dt = datetime.strptime(start_date_str, "%B %d, %Y")
+                    corrected_start = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    
+                    # Parse the end date
+                    end_date_str = end_match.group(1).strip()
+                    end_dt = datetime.strptime(end_date_str, "%B %d, %Y")
+                    corrected_end = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    
+                    logger.info(f"Fixed liability dates: start={corrected_start}, end={corrected_end}")
+                    
+                    return {
+                        **parameters,
+                        'start_date': corrected_start,
+                        'end_date': corrected_end
+                    }
+                    
+                except ValueError as e:
+                    logger.warning(f"Could not parse liability dates: {e}")
+                    return parameters
+            else:
+                logger.warning("Could not find start/end date patterns in user input")
+                return parameters
+        
+        return parameters
+    
     def validate_parameters(self, parameters: Dict[str, Any], pydantic_model: type) -> Tuple[bool, List[str]]:
         """
         Validate parameters using Pydantic model and custom validators.
@@ -568,10 +648,22 @@ async def parameter_extraction_node(state: MainState) -> OrchestratorState:
         # Normalize parameters
         normalized_parameters = extractor.normalize_parameters(raw_parameters, pydantic_model)
         
+        # Post-process date extraction for liability entities
+        if (orchestrator_state.intent == IntentCategory.DATABASE_OPERATIONS and 
+            normalized_parameters.get('entity_type') == 'liability' and
+            'start_date' in normalized_parameters and 'end_date' in normalized_parameters):
+            normalized_parameters = extractor.fix_liability_dates(
+                normalized_parameters, orchestrator_state.user_input
+            )
+        
         # Always include user_id from the state if it's not already present
         if 'user_id' in pydantic_model.model_fields and 'user_id' not in normalized_parameters:
-            normalized_parameters['user_id'] = orchestrator_state.user_id
-            logger.info(f"Added user_id from state: {orchestrator_state.user_id[:8]}...")
+            user_id = orchestrator_state.metadata.get('user_id')
+            if user_id:
+                normalized_parameters['user_id'] = user_id
+                logger.info(f"Added user_id from state: {user_id[:8]}...")
+            else:
+                logger.warning("user_id not found in state metadata")
         
         # Validate parameters
         is_valid, validation_errors = extractor.validate_parameters(normalized_parameters, pydantic_model)
