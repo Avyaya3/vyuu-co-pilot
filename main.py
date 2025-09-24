@@ -67,14 +67,14 @@ async def invoke_graph(
             user_id = os.getenv("STUDIO_TEST_USER_ID")
             if not user_id:
                 # Fallback to hardcoded test user for Studio
-                user_id = "cmemx6bqy0000tb3perguhj4m"
+                user_id = "cmfobnc6v0000xit8qoy6gbrj"
                 logger.warning(f"[Studio] STUDIO_TEST_USER_ID not found in env, using fallback: {user_id[:8]}...")
             else:
                 logger.info(f"[Studio] Using test user from env: {user_id[:8]}...")
         
         # Extra validation
         if user_id == "extracted_from_context" or not user_id:
-            user_id = "cmemx6bqy0000tb3perguhj4m"
+            user_id = "cmfobnc6v0000xit8qoy6gbrj"
             logger.warning(f"[Studio] Invalid user_id detected, forcing test user: {user_id[:8]}...")
         
         # Create orchestrator instance with in-memory sessions for Studio
