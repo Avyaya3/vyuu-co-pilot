@@ -257,7 +257,7 @@ class MainOrchestrator:
                 "metadata": self._serialize_metadata_for_streaming({
                     **final_state.metadata,
                     "processing_metadata": processing_metadata
-                }
+                })
             }
             
             logger.info(f"[MainOrchestrator] Successfully processed message for session {final_state.session_id[:8]} in {processing_time:.2f}s")
@@ -437,7 +437,7 @@ class MainOrchestrator:
                     "processing_time_seconds": processing_time,
                     "total_chunks": len(sentences),
                     "session_saved": save_success
-                }
+                })
             }
             
             logger.info(f"[MainOrchestrator] Successfully streamed response for session {final_state.session_id[:8]} in {processing_time:.2f}s")
@@ -642,7 +642,7 @@ class MainOrchestrator:
             "metadata": self._serialize_metadata_for_streaming({
                 "error": True,
                 "error_metadata": error_metadata
-            }
+            })
         }
         
         logger.error(f"[MainOrchestrator] Processing error {error_id}: {error}")
@@ -867,7 +867,7 @@ class MainOrchestrator:
                 "response_type": "clarification_question",
                 "waiting_for_response": True,
                 "clarification_attempts": state.metadata.get("clarification_attempts", 0)
-            }
+            })
         }
     
     async def _prepare_clarification_resume(self, state: MainState, user_response: str) -> MainState:
@@ -924,7 +924,7 @@ class MainOrchestrator:
                     "clarification_status": "processing_user_response",
                     "resumed_from_pause": True,
                     "last_user_response": user_response
-                }
+                })
             })
             
             return clarification_state
@@ -940,7 +940,7 @@ class MainOrchestrator:
                     "clarification_status": "processing_user_response",
                     "resumed_from_pause": True,
                     "last_user_response": user_response
-                }
+                })
             })
 
 
