@@ -254,7 +254,7 @@ class MainOrchestrator:
                 "session_id": final_state.session_id,
                 "conversation_history": [msg.model_dump() for msg in final_state.messages],
                 "status": "success",
-                "metadata": {
+                "metadata": self._serialize_metadata_for_streaming({
                     **final_state.metadata,
                     "processing_metadata": processing_metadata
                 }
@@ -432,7 +432,7 @@ class MainOrchestrator:
             yield {
                 "type": "response_complete",
                 "session_id": final_state.session_id,
-                "metadata": {
+                "metadata": self._serialize_metadata_for_streaming({
                     **final_state.metadata,
                     "processing_time_seconds": processing_time,
                     "total_chunks": len(sentences),
@@ -491,6 +491,23 @@ class MainOrchestrator:
                 cleaned_sentences.append(sentence)
         
         return cleaned_sentences if cleaned_sentences else [text]
+    
+    def _serialize_metadata_for_streaming(self, metadata):
+        """Serialize metadata for streaming by converting datetime objects to ISO strings."""
+        import json
+        from datetime import datetime
+        
+        def convert_datetime(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: convert_datetime(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_datetime(item) for item in obj]
+            else:
+                return obj
+        
+        return convert_datetime(metadata)
     
     async def _prepare_session_state(
         self,
@@ -622,7 +639,7 @@ class MainOrchestrator:
             "session_id": session_id or str(uuid4()),
             "conversation_history": [],
             "status": "error",
-            "metadata": {
+            "metadata": self._serialize_metadata_for_streaming({
                 "error": True,
                 "error_metadata": error_metadata
             }
@@ -844,7 +861,7 @@ class MainOrchestrator:
             "session_id": state.session_id,
             "conversation_history": [msg.model_dump() for msg in state.messages],
             "status": "waiting_for_clarification",
-            "metadata": {
+            "metadata": self._serialize_metadata_for_streaming({
                 **state.metadata,
                 "processing_metadata": processing_metadata,
                 "response_type": "clarification_question",
@@ -902,7 +919,7 @@ class MainOrchestrator:
             
             # Update metadata for resume
             clarification_state = clarification_state.model_copy(update={
-                "metadata": {
+                "metadata": self._serialize_metadata_for_streaming({
                     **clarification_state.metadata,
                     "clarification_status": "processing_user_response",
                     "resumed_from_pause": True,
@@ -918,7 +935,7 @@ class MainOrchestrator:
                 "waiting_for_response": False,
                 "clarification_phase": "processing",
                 "pending_question": None,
-                "metadata": {
+                "metadata": self._serialize_metadata_for_streaming({
                     **state.metadata,
                     "clarification_status": "processing_user_response",
                     "resumed_from_pause": True,
