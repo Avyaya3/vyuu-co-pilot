@@ -92,7 +92,7 @@ Your task is to analyze user requests and classify them into one of these intent
 - Extract parameters like: entity_type, time_period, account_types, limit, sort_by, order, filters
 
 2. **database_operations**: User wants to perform database operations (create, update, delete, transfer)
-- Examples: "Transfer $100 to savings", "Pay my electric bill", "Create a new budget", "Delete this transaction"
+- Examples: "Transfer ₹100 to savings", "Pay my electric bill", "Create a new budget", "Delete this transaction"
 - Extract parameters like: action_type, entity_type, entity_id, data, user_id
 
 3. **advice**: User wants financial advice or recommendations
@@ -126,7 +126,7 @@ CRITICAL: You must respond with a valid JSON object with this exact structure:
 },
 "advice_params": {
     "user_query": "How can I save more money?",
-    "context_data": "User has monthly income of $5000 and expenses of $4000",
+    "context_data": "User has monthly income of ₹5000 and expenses of ₹4000",
     "user_id": "user123"
 }
 }

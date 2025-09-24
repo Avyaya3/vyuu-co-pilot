@@ -32,7 +32,7 @@ BASE_SYSTEM_PROMPT = """You are a helpful financial assistant. Generate response
 
 RESPONSE GUIDELINES:
 - Be conversational and helpful
-- Format financial data clearly (use $ for amounts, % for percentages)
+- Format financial data clearly (use ₹ for amounts, % for percentages)
 - Present data in a structured, easy-to-read format
 - Include relevant context and insights
 - Keep responses concise but informative"""

@@ -192,7 +192,7 @@ system_prompt = """You are a helpful financial assistant. Generate clear, inform
 
 RESPONSE GUIDELINES:
 - Be conversational and helpful
-- Format financial data clearly (use $ for amounts, % for percentages)
+- Format financial data clearly (use ₹ for amounts, % for percentages)
 - Present data in a structured, easy-to-read format
 - Include relevant context and insights
 - Keep responses concise but informative
@@ -230,9 +230,9 @@ def _generate_fallback_response(self, state, tool_results):
 ```python
 formatter = DataFormatter()
 
-# USD formatting
-formatter.format_currency(1234.56)  # "$1,234.56"
-formatter.format_currency(1000)     # "$1,000.00"
+# INR formatting
+formatter.format_currency(1234.56)  # "₹1,234.56"
+formatter.format_currency(1000)     # "₹1,000.00"
 
 # Other currencies
 formatter.format_currency(1000, "EUR")  # "€1,000.00"

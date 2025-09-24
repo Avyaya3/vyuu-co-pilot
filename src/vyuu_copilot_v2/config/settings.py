@@ -129,6 +129,35 @@ class LoggingConfig(BaseSettings):
         extra = "ignore"
 
 
+class CurrencyConfig(BaseSettings):
+    """Currency configuration settings."""
+    
+    default_symbol: str = "₹"
+    default_code: str = "INR"
+    decimal_places: int = 2
+    thousands_separator: str = ","
+    decimal_separator: str = "."
+    
+    class Config:
+        env_prefix = "CURRENCY_"
+        case_sensitive = False
+        extra = "ignore"
+    
+    @validator("default_symbol")
+    def validate_symbol(cls, v: str) -> str:
+        """Validate currency symbol."""
+        if not v or len(v) > 3:
+            raise ValueError("Currency symbol must be 1-3 characters")
+        return v
+    
+    @validator("decimal_places")
+    def validate_decimal_places(cls, v: int) -> int:
+        """Validate decimal places."""
+        if v < 0 or v > 4:
+            raise ValueError("Decimal places must be between 0 and 4")
+        return v
+
+
 class AppConfig(BaseSettings):
     """Main application configuration."""
     
@@ -142,6 +171,7 @@ class AppConfig(BaseSettings):
     api: APIConfig
     logging: LoggingConfig
     custom_jwt: CustomJWTConfig
+    currency: CurrencyConfig
     
     def __init__(self, **kwargs):
         # Initialize sub-configurations
@@ -151,6 +181,7 @@ class AppConfig(BaseSettings):
         api_config = APIConfig()
         logging_config = LoggingConfig()
         custom_jwt_config = CustomJWTConfig()
+        currency_config = CurrencyConfig()
         
         super().__init__(
             supabase=supabase_config,
@@ -159,6 +190,7 @@ class AppConfig(BaseSettings):
             api=api_config,
             logging=logging_config,
             custom_jwt=custom_jwt_config,
+            currency=currency_config,
             **kwargs
         )
     

@@ -22,7 +22,7 @@ async def test_streaming_endpoint():
     
     # Test data (same as what your frontend would send)
     test_request = {
-        "message": "Create a liability: 'Home Mortgage' for $300000 with $2000 monthly EMI at 3.5% interest rate, starting January 1, 2022, ending December 31, 2052",
+        "message": "Create a liability: 'Home Mortgage' for ₹300000 with ₹2000 monthly EMI at 3.5% interest rate, starting January 1, 2022, ending December 31, 2052",
         "session_id": None,
         "conversation_history": [],
         "user_id": "cmfobnc6v0000xit8qoy6gbrj",

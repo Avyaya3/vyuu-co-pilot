@@ -23,18 +23,29 @@ class DataFormatter:
     - Spending analysis formatting
     - Simple text table generation
     """
+    
+    def __init__(self, currency_symbol: Optional[str] = None):
+        """
+        Initialize DataFormatter with optional currency symbol.
+        
+        Args:
+            currency_symbol: Currency symbol to use. If None, uses default ₹.
+        """
+        self.currency_symbol = currency_symbol or "₹"
 
-    def format_currency(self, amount: Union[int, float], currency_symbol: str = "$") -> str:
+    def format_currency(self, amount: Union[int, float], currency_symbol: Optional[str] = None) -> str:
         """
         Format currency amount with symbol and commas.
         
         Args:
             amount: Amount to format
-            currency_symbol: Currency symbol to use
+            currency_symbol: Currency symbol to use. If None, uses instance default.
             
         Returns:
             Formatted currency string
         """
+        if currency_symbol is None:
+            currency_symbol = self.currency_symbol
         if amount is None:
             return f"{currency_symbol}0.00"
         

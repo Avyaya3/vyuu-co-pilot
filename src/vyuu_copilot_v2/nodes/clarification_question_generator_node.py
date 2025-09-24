@@ -77,7 +77,7 @@ class QuestionTemplate:
         """Get intent-specific guidance for question generation."""
         guidance_map = {
             IntentType.DATABASE_OPERATIONS: {
-                "amount": "Ask for a specific dollar amount (e.g., '$500', '$1,250.50').",
+                "amount": "Ask for a specific amount (e.g., '₹500', '₹1,250.50').",
                 "source_account": "Ask which account to transfer/withdraw from (e.g., 'checking', 'savings').",
                 "target_account": "Ask which account to transfer/deposit to.",
                 "description": "Ask for an optional description or memo for the transaction."

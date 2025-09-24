@@ -31,10 +31,10 @@ class TestDataFormatter:
         """Test currency formatting."""
         formatter = DataFormatter()
         
-        assert formatter.format_currency(1234.56) == "$1,234.56"
-        assert formatter.format_currency(-1234.56) == "-$1,234.56"
-        assert formatter.format_currency(0) == "$0.00"
-        assert formatter.format_currency(None) == "$0.00"
+        assert formatter.format_currency(1234.56) == "₹1,234.56"
+        assert formatter.format_currency(-1234.56) == "-₹1,234.56"
+        assert formatter.format_currency(0) == "₹0.00"
+        assert formatter.format_currency(None) == "₹0.00"
 
     def test_format_percentage(self):
         """Test percentage formatting."""
