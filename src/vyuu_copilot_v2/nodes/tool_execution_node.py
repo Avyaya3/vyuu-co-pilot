@@ -453,7 +453,7 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         else:
             logger.warning("Tool execution debug - no real user_id found in state metadata!")
             # Fallback to hardcoded test user for Studio
-            fallback_user_id = "cmemx6bqy0000tb3perguhj4m"
+            fallback_user_id = "cmfobnc6v0000xit8qoy6gbrj"
             base_extracted_params["user_id"] = fallback_user_id
             logger.warning(f"Tool execution debug - using fallback user_id: {fallback_user_id}")
         
