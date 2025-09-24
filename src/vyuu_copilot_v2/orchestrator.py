@@ -15,9 +15,11 @@ Features:
 - Performance tracking and metrics
 """
 
+import json
 import logging
+import re
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncGenerator
 from uuid import uuid4
 from datetime import datetime, timezone
 
@@ -274,6 +276,221 @@ class MainOrchestrator:
             
             logger.error(f"[MainOrchestrator] Error processing message: {e}")
             return error_response
+    
+    async def process_user_message_stream(
+        self,
+        user_input: str,
+        user_id: str = None,
+        session_id: str = None,
+        conversation_history: List[Dict] = None,
+        financial_data: Dict[str, Any] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Stream processing of user messages with real-time updates.
+        
+        This method provides Server-Sent Events (SSE) streaming for chatbot responses,
+        allowing the frontend to receive incremental updates as the LangGraph processes
+        the user's request.
+        
+        Args:
+            user_input: User's message/request
+            user_id: Optional user ID for session association
+            session_id: Optional existing session ID for conversation continuity
+            conversation_history: Optional previous conversation messages
+            financial_data: Optional financial data for context
+            
+        Yields:
+            Dictionary events for SSE streaming
+        """
+        start_time = time.time()
+        
+        try:
+            logger.info(f"[MainOrchestrator] Starting streaming for session {session_id[:8] if session_id else 'new'}")
+            
+            # Send processing start event
+            yield {
+                "type": "processing",
+                "message": "Processing your request...",
+                "stage": "initialization"
+            }
+            
+            # Load or create session state
+            state = await self._prepare_session_state(
+                user_input=user_input,
+                user_id=user_id,
+                session_id=session_id,
+                conversation_history=conversation_history,
+                financial_data=financial_data
+            )
+            
+            # Add Supabase JWT token for MCP calls if user_id is available
+            if user_id:
+                try:
+                    from vyuu_copilot_v2.utils.auth import get_auth_manager
+                    auth_manager = get_auth_manager()
+                    supabase_jwt = auth_manager.get_supabase_jwt_for_mcp(user_id)
+                    state.metadata["supabase_jwt_token"] = supabase_jwt
+                    logger.debug(f"[MainOrchestrator] Added Supabase JWT token for MCP calls for user {user_id}")
+                except Exception as e:
+                    logger.warning(f"[MainOrchestrator] Failed to create Supabase JWT token for user {user_id}: {e}")
+            
+            # Check if this is a response to a clarification question
+            if self._is_clarification_response(state, user_input):
+                logger.info(f"[MainOrchestrator] Detected clarification response for session {state.session_id[:8]}")
+                state = await self._prepare_clarification_resume(state, user_input)
+            
+            # Stream LangGraph execution events
+            yield {
+                "type": "processing",
+                "message": "Analyzing your request...",
+                "stage": "graph_execution"
+            }
+            
+            # Use LangGraph streaming
+            final_state = None
+            async for event in self.graph.astream_events(state, version="v1"):
+                # Process different event types
+                if event["event"] == "on_chain_start":
+                    node_name = event.get("name", "unknown")
+                    yield {
+                        "type": "processing",
+                        "message": f"Processing {self._get_user_friendly_stage_name(node_name)}...",
+                        "stage": node_name
+                    }
+                elif event["event"] == "on_chain_end":
+                    # Node completed
+                    pass
+                elif event["event"] == "on_chain_error":
+                    # Handle errors
+                    error_msg = event.get("error", "Unknown error")
+                    yield {
+                        "type": "error",
+                        "message": f"Processing error: {str(error_msg)}",
+                        "error_code": "GRAPH_EXECUTION_ERROR",
+                        "details": {"error": str(error_msg)}
+                    }
+                    return
+                
+                # Capture the final state from the last event
+                if event["event"] == "on_chain_end" and event.get("name") == "final_response_formatter":
+                    final_state = event.get("data", {}).get("output")
+                    if final_state and hasattr(final_state, 'session_id'):
+                        # Convert to MainState if needed
+                        if not isinstance(final_state, MainState):
+                            final_state = MainState(**dict(final_state))
+            
+            # If we didn't get final_state from events, fallback to regular execution
+            if final_state is None:
+                logger.warning("[MainOrchestrator] Final state not captured from events, falling back to regular execution")
+                raw_result = await self.graph.ainvoke(state)
+                if hasattr(raw_result, 'get') and not hasattr(raw_result, 'session_id'):
+                    final_state = MainState(**dict(raw_result))
+                else:
+                    final_state = raw_result
+            
+            # Save session state
+            save_success = self.session_manager.save_session_state(final_state)
+            if not save_success:
+                logger.warning(f"[MainOrchestrator] Failed to save session state for {final_state.session_id[:8]}")
+            
+            # Check if we're paused for clarification
+            if self._is_paused_for_clarification(final_state):
+                logger.info(f"[MainOrchestrator] Paused for clarification - streaming question for session {final_state.session_id[:8]}")
+                clarification_response = self._format_clarification_question_response(final_state, {})
+                yield {
+                    "type": "clarification_question",
+                    "message": clarification_response.get("response", "I need more information to help you."),
+                    "session_id": final_state.session_id,
+                    "metadata": clarification_response.get("metadata", {})
+                }
+                return
+            
+            # Stream the final response in chunks
+            response_text = final_state.response or "I processed your request but didn't get a specific response."
+            
+            # Send response chunks (sentence-based)
+            yield {
+                "type": "processing",
+                "message": "Generating response...",
+                "stage": "response_generation"
+            }
+            
+            # Split response into sentences and stream them
+            sentences = self._split_into_sentences(response_text)
+            for i, sentence in enumerate(sentences):
+                if sentence.strip():  # Skip empty sentences
+                    yield {
+                        "type": "response_chunk",
+                        "content": sentence.strip(),
+                        "is_final": i == len(sentences) - 1,
+                        "chunk_index": i,
+                        "total_chunks": len(sentences)
+                    }
+            
+            # Send final metadata
+            processing_time = time.time() - start_time
+            yield {
+                "type": "response_complete",
+                "session_id": final_state.session_id,
+                "metadata": {
+                    **final_state.metadata,
+                    "processing_time_seconds": processing_time,
+                    "total_chunks": len(sentences),
+                    "session_saved": save_success
+                }
+            }
+            
+            logger.info(f"[MainOrchestrator] Successfully streamed response for session {final_state.session_id[:8]} in {processing_time:.2f}s")
+            
+        except Exception as e:
+            # Handle errors gracefully
+            processing_time = time.time() - start_time
+            logger.error(f"[MainOrchestrator] Error in streaming: {e}")
+            
+            yield {
+                "type": "error",
+                "message": f"Sorry, I encountered an error: {str(e)}",
+                "error_code": "STREAMING_ERROR",
+                "details": {
+                    "error": str(e),
+                    "processing_time_seconds": processing_time
+                }
+            }
+    
+    def _get_user_friendly_stage_name(self, node_name: str) -> str:
+        """Convert internal node names to user-friendly stage names."""
+        stage_mapping = {
+            "user_input_processor": "your request",
+            "intent_classification_node": "your intent",
+            "decision_router": "routing",
+            "parameter_extraction_node": "parameters",
+            "execution_planner": "execution plan",
+            "tool_execution_node": "tools",
+            "response_synthesis_node": "response",
+            "final_response_formatter": "final response"
+        }
+        return stage_mapping.get(node_name, "your request")
+    
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """Split text into sentences for streaming."""
+        if not text:
+            return []
+        
+        # Simple sentence splitting on common sentence endings
+        # This is a basic implementation - could be enhanced with more sophisticated NLP
+        sentences = re.split(r'[.!?]+', text)
+        
+        # Clean up and filter empty sentences
+        cleaned_sentences = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if sentence:
+                # Add back the punctuation if it was removed
+                if not sentence.endswith(('.', '!', '?')):
+                    sentence += '.'
+                cleaned_sentences.append(sentence)
+        
+        return cleaned_sentences if cleaned_sentences else [text]
     
     async def _prepare_session_state(
         self,

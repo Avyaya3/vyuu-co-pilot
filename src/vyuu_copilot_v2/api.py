@@ -4,6 +4,7 @@ FastAPI Application for Vyuu Copilot v2 - LangGraph Intent Orchestration System.
 This module provides REST API endpoints for chatbot UI integration.
 """
 
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, validator
 from contextlib import asynccontextmanager
 
@@ -63,8 +64,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.api.cors_origins if hasattr(config.api, 'cors_origins') else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language",
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Cache-Control",
+        "Connection",
+        "Last-Event-ID",
+        "X-Accel-Buffering"  # For SSE compatibility
+    ],
+    expose_headers=[
+        "Content-Type",
+        "Cache-Control",
+        "Connection",
+        "X-Accel-Buffering"
+    ]
 )
 
 
@@ -362,6 +380,88 @@ async def chat_endpoint(
                 }
             }
         )
+
+
+@app.post("/chat/stream")
+async def chat_stream_endpoint(
+    request: ChatRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """
+    Streaming chat endpoint for real-time response delivery.
+    
+    This endpoint provides Server-Sent Events (SSE) streaming for chatbot responses,
+    allowing the frontend to receive incremental updates as the LangGraph processes
+    the user's request. This solves timeout issues with long-running operations.
+    """
+    global orchestrator
+    
+    if orchestrator is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Orchestrator not initialized"
+        )
+    
+    async def generate_stream():
+        """Generate Server-Sent Events stream."""
+        try:
+            # Extract user ID from JWT token if available
+            user_id = current_user.get("user_id") if current_user else request.user_id
+            
+            # Generate session ID if not provided
+            session_id = request.session_id or str(uuid4())
+            
+            # Convert conversation history to the format expected by orchestrator
+            conversation_history = []
+            if request.conversation_history:
+                for msg in request.conversation_history:
+                    conversation_history.append({
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.timestamp
+                    })
+            
+            logger.info(f"Starting streaming chat for session {session_id[:8]}...")
+            
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connection', 'session_id': session_id, 'status': 'connected'})}\n\n"
+            
+            # Stream the response using the orchestrator
+            async for event in orchestrator.process_user_message_stream(
+                user_input=request.message,
+                user_id=user_id,
+                session_id=session_id,
+                conversation_history=conversation_history,
+                financial_data=request.financial_data
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+            
+            # Send stream completion event
+            yield f"data: {json.dumps({'type': 'stream_complete', 'session_id': session_id})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in streaming chat: {e}")
+            # Send error event
+            error_event = {
+                'type': 'error',
+                'message': f"Streaming error: {str(e)}",
+                'error_code': 'STREAM_ERROR',
+                'details': {'error': str(e)}
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Expose-Headers": "*"
+        }
+    )
 
 
 class SimpleChatRequest(BaseModel):
