@@ -423,8 +423,11 @@ async def chat_stream_endpoint(
             
             logger.info(f"Starting streaming chat for session {session_id[:8]}...")
             
-            # Send initial connection event
+            # Send initial connection event immediately
             yield f"data: {json.dumps({'type': 'connection', 'session_id': session_id, 'status': 'connected'})}\n\n"
+            
+            # Send immediate heartbeat to keep connection alive
+            yield f"data: {json.dumps({'type': 'heartbeat', 'message': 'Initializing...', 'timestamp': time.time()})}\n\n"
             
             # Stream the response using the orchestrator
             async for event in orchestrator.process_user_message_stream(
@@ -459,7 +462,9 @@ async def chat_stream_endpoint(
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Expose-Headers": "*"
+            "Access-Control-Expose-Headers": "*",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering for SSE
+            "Transfer-Encoding": "chunked"
         }
     )
 

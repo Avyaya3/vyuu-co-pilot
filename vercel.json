@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "src/vyuu_copilot_v2/api.py": {
+      "maxDuration": 60
+    }
+  },
+  "regions": ["iad1"],
+  "framework": null
+}

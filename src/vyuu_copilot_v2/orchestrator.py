@@ -307,11 +307,18 @@ class MainOrchestrator:
         try:
             logger.info(f"[MainOrchestrator] Starting streaming for session {session_id[:8] if session_id else 'new'}")
             
-            # Send processing start event
+            # Send immediate processing start event
             yield {
                 "type": "processing",
                 "message": "Processing your request...",
                 "stage": "initialization"
+            }
+            
+            # Send heartbeat to keep connection alive during state preparation
+            yield {
+                "type": "heartbeat",
+                "message": "Preparing session...",
+                "stage": "session_preparation"
             }
             
             # Load or create session state
@@ -326,6 +333,13 @@ class MainOrchestrator:
             # Add Supabase JWT token for MCP calls if user_id is available
             if user_id:
                 try:
+                    # Send heartbeat before JWT creation
+                    yield {
+                        "type": "heartbeat",
+                        "message": "Setting up authentication...",
+                        "stage": "auth_setup"
+                    }
+                    
                     from vyuu_copilot_v2.utils.auth import get_auth_manager
                     auth_manager = get_auth_manager()
                     supabase_jwt = auth_manager.get_supabase_jwt_for_mcp(user_id)
