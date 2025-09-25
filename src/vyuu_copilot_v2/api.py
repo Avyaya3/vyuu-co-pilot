@@ -404,6 +404,9 @@ async def chat_stream_endpoint(
     
     async def generate_stream():
         """Generate Server-Sent Events stream."""
+        stream_start_time = time.time()
+        vercel_timeout = 25  # Vercel timeout is 25 seconds, we'll be conservative
+        
         try:
             # Extract user ID from JWT token if available
             user_id = current_user.get("user_id") if current_user else request.user_id
@@ -429,7 +432,10 @@ async def chat_stream_endpoint(
             # Send immediate heartbeat to keep connection alive
             yield f"data: {json.dumps({'type': 'heartbeat', 'message': 'Initializing...', 'timestamp': time.time()})}\n\n"
             
-            # Stream the response using the orchestrator
+            # Stream the response using the orchestrator with timeout protection
+            last_heartbeat = time.time()
+            heartbeat_interval = 8  # Send heartbeat every 8 seconds at API level (more aggressive)
+            
             async for event in orchestrator.process_user_message_stream(
                 user_input=request.message,
                 user_id=user_id,
@@ -437,10 +443,24 @@ async def chat_stream_endpoint(
                 conversation_history=conversation_history,
                 financial_data=request.financial_data
             ):
+                # Check for Vercel timeout approaching
+                current_time = time.time()
+                elapsed_time = current_time - stream_start_time
+                
+                if elapsed_time > vercel_timeout:
+                    # Send timeout warning and graceful shutdown
+                    yield f"data: {json.dumps({'type': 'timeout_warning', 'message': 'Processing is taking longer than expected. Please wait...', 'elapsed_time': elapsed_time})}\n\n"
+                    break
+                
+                # Send API-level heartbeat if too much time has passed
+                if current_time - last_heartbeat > heartbeat_interval:
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'message': f'API heartbeat - still processing... ({elapsed_time:.1f}s elapsed)', 'timestamp': current_time, 'elapsed_time': elapsed_time})}\n\n"
+                    last_heartbeat = current_time
+                
                 yield f"data: {json.dumps(event)}\n\n"
             
             # Send stream completion event
-            yield f"data: {json.dumps({'type': 'stream_complete', 'session_id': session_id})}\n\n"
+            yield f"data: {json.dumps({'type': 'stream_complete', 'session_id': session_id, 'total_time': time.time() - stream_start_time})}\n\n"
             
         except Exception as e:
             logger.error(f"Error in streaming chat: {e}")

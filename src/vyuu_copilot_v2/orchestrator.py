@@ -360,9 +360,23 @@ class MainOrchestrator:
                 "stage": "graph_execution"
             }
             
-            # Use LangGraph streaming
+            # Use LangGraph streaming with aggressive heartbeats
             final_state = None
+            last_heartbeat = time.time()
+            heartbeat_interval = 5  # Send heartbeat every 5 seconds
+            
             async for event in self.graph.astream_events(state, version="v1"):
+                # Send heartbeat if too much time has passed
+                current_time = time.time()
+                if current_time - last_heartbeat > heartbeat_interval:
+                    yield {
+                        "type": "heartbeat",
+                        "message": "Still processing...",
+                        "stage": "graph_execution",
+                        "timestamp": current_time
+                    }
+                    last_heartbeat = current_time
+                
                 # Process different event types
                 if event["event"] == "on_chain_start":
                     node_name = event.get("name", "unknown")

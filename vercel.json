@@ -1,6 +1,15 @@
 {
   "functions": {
-    "src/vyuu_copilot_v2/api.py": {
+    "api/**/*.py": {
+      "maxDuration": 60
+    },
+    "src/**/*.py": {
+      "maxDuration": 60
+    },
+    "main.py": {
+      "maxDuration": 60
+    },
+    "start_api.py": {
       "maxDuration": 60
     }
   },
