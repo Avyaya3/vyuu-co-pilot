@@ -24,6 +24,7 @@ from ..schemas.state_schemas import OrchestratorState, MessageManager
 from ..tools import TOOL_REGISTRY, get_tool, get_tool_schema
 # from ..services import get_financial_service  # Temporarily disabled
 from ..tools.base import ToolResponse
+from ..utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 logger = logging.getLogger(__name__)
 
@@ -385,178 +386,232 @@ async def tool_execution_node(state: OrchestratorState) -> OrchestratorState:
         Updated OrchestratorState with tool_results and execution metadata
     """
     node_name = "tool_execution_node"
-    start_time = datetime.now(timezone.utc)
-    execution_start = time.time()
     
-    logger.info(f"Tool execution node starting for session {state.session_id[:8]}")
-    
-    # Add system message for tracking
-    state = MessageManager.add_system_message(
-        state,
-        f"Starting tool execution for {state.intent.value if state.intent else 'unknown'} intent",
-        node_name
-    )
-    
-    try:
-        # Validate execution plan exists
-        if not state.execution_plan:
-            error_msg = "No execution plan provided"
-            logger.error(error_msg)
-            return state.model_copy(update={
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            exec_logger.log_step("node_start", {
+                "intent": state.intent.value if state.intent else "unknown",
+                "execution_plan_exists": bool(state.execution_plan),
+                "extracted_params_count": len(state.extracted_params) if state.extracted_params else 0
+            })
+            
+            # Add system message for tracking
+            state = MessageManager.add_system_message(
+                state,
+                f"Starting tool execution for {state.intent.value if state.intent else 'unknown'} intent",
+                node_name
+            )
+            
+            exec_logger.log_step("execution_plan_validation")
+            
+            # Validate execution plan exists
+            if not state.execution_plan:
+                error_msg = "No execution plan provided"
+                exec_logger.log_error(Exception(error_msg), {"error_type": "missing_execution_plan"})
+                
+                error_state = state.model_copy(update={
+                    "metadata": {
+                        **state.metadata,
+                        "execution_status": "failure",
+                        "execution_errors": [error_msg],
+                        "execution_times": {},
+                        "total_execution_time_ms": 0.0,
+                        "steps_completed": 0,
+                        "steps_failed": 0
+                    }
+                })
+                
+                execution_metrics = exec_logger.end(success=False, error=error_msg, error_type="MissingExecutionPlanError")
+                error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+                return error_state
+            
+            # Extract steps from execution plan
+            steps = state.execution_plan.get("steps", [])
+            if not steps:
+                error_msg = "Execution plan contains no steps"
+                exec_logger.log_error(Exception(error_msg), {"error_type": "empty_execution_plan"})
+                
+                error_state = state.model_copy(update={
+                    "metadata": {
+                        **state.metadata,
+                        "execution_status": "failure",
+                        "execution_errors": [error_msg],
+                        "execution_times": {},
+                        "total_execution_time_ms": 0.0,
+                        "steps_completed": 0,
+                        "steps_failed": 0
+                    }
+                })
+                
+                execution_metrics = exec_logger.end(success=False, error=error_msg, error_type="EmptyExecutionPlanError")
+                error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+                return error_state
+            
+            exec_logger.log_step("execution_strategy_determination", {
+                "steps_count": len(steps)
+            })
+            
+            # Determine execution strategy
+            execution_strategy = _determine_execution_strategy(steps)
+            
+            exec_logger.log_step("execution_strategy_determined", {
+                "execution_strategy": execution_strategy
+            })
+            
+            exec_logger.log_step("user_id_enforcement")
+            
+            # Prepare base extracted params and enforce real user_id from state metadata
+            base_extracted_params = dict(state.extracted_params or {})
+            real_user_id = (state.metadata or {}).get("user_id")
+            
+            # Debug logging for user_id enforcement
+            exec_logger.log_step("user_id_debug", {
+                "extracted_params_user_id": base_extracted_params.get('user_id'),
+                "state_metadata_user_id": real_user_id,
+                "state_metadata_keys": list((state.metadata or {}).keys()),
+                "state_session_id": getattr(state, 'session_id', 'NOT_FOUND')
+            })
+            
+            if real_user_id:
+                base_extracted_params["user_id"] = real_user_id
+                exec_logger.log_step("user_id_enforced", {"user_id_length": len(real_user_id)})
+            else:
+                exec_logger.log_step("user_id_fallback_needed")
+                # Fallback to hardcoded test user for Studio
+                fallback_user_id = "cmfobnc6v0000xit8qoy6gbrj"
+                base_extracted_params["user_id"] = fallback_user_id
+                exec_logger.log_step("user_id_fallback_applied", {"fallback_user_id": fallback_user_id})
+            
+            exec_logger.log_step("tool_execution_start", {
+                "execution_strategy": execution_strategy,
+                "steps_to_execute": len(steps)
+            })
+            
+            # Execute steps with safe parameters
+            if execution_strategy == "transaction":
+                results, errors = await _execute_with_transaction(steps, base_extracted_params, state)
+            else:
+                results, errors = await _execute_without_transaction(steps, base_extracted_params, state)
+            
+            exec_logger.log_step("tool_execution_complete", {
+                "results_count": len(results),
+                "errors_count": len(errors)
+            })
+            
+            # Calculate execution statistics
+            successful_steps = sum(1 for r in results if r.success)
+            failed_steps = len(results) - successful_steps
+            
+            # Determine final execution status
+            if failed_steps == 0:
+                execution_status = "success"
+            elif successful_steps > 0:
+                execution_status = "partial_failure"
+            else:
+                execution_status = "failure"
+            
+            exec_logger.log_step("execution_statistics_calculated", {
+                "successful_steps": successful_steps,
+                "failed_steps": failed_steps,
+                "execution_status": execution_status
+            })
+            
+            exec_logger.log_step("tool_results_preparation")
+            
+            # Prepare tool results dictionary
+            tool_results = {}
+            execution_times = {}
+            
+            for result in results:
+                step_key = f"step_{result.step_index}"
+                tool_results[step_key] = result.to_dict()
+                execution_times[step_key] = result.execution_time_ms
+            
+            # Add tool-specific keys for easier access
+            for result in results:
+                if result.success:
+                    tool_results[result.tool_name] = result.to_dict()
+            
+            exec_logger.log_step("state_update_start")
+            
+            # Update state with results
+            updated_state = state.model_copy(update={
+                "tool_results": tool_results,
                 "metadata": {
                     **state.metadata,
-                    "execution_status": "failure",
-                    "execution_errors": [error_msg],
-                    "execution_times": {},
-                    "total_execution_time_ms": 0.0,
-                    "steps_completed": 0,
-                    "steps_failed": 0
+                    "execution_status": execution_status,
+                    "execution_errors": errors,
+                    "execution_times": execution_times,
+                    "steps_completed": successful_steps,
+                    "steps_failed": failed_steps,
+                    "execution_strategy": execution_strategy,
+                    "node_name": node_name,
+                    "node_timestamp": datetime.now(timezone.utc).isoformat()
                 }
             })
-        
-        # Extract steps from execution plan
-        steps = state.execution_plan.get("steps", [])
-        if not steps:
-            error_msg = "Execution plan contains no steps"
-            logger.error(error_msg)
-            return state.model_copy(update={
-                "metadata": {
-                    **state.metadata,
-                    "execution_status": "failure",
-                    "execution_errors": [error_msg],
-                    "execution_times": {},
-                    "total_execution_time_ms": 0.0,
-                    "steps_completed": 0,
-                    "steps_failed": 0
-                }
-            })
-        
-        logger.info(f"Executing {len(steps)} steps from execution plan")
-        
-        # Determine execution strategy
-        execution_strategy = _determine_execution_strategy(steps)
-        logger.info(f"Using execution strategy: {execution_strategy}")
-        
-        # Prepare base extracted params and enforce real user_id from state metadata
-        base_extracted_params = dict(state.extracted_params or {})
-        real_user_id = (state.metadata or {}).get("user_id")
-        
-        # Debug logging for user_id enforcement
-        logger.info(f"Tool execution debug - extracted_params user_id: {base_extracted_params.get('user_id')}")
-        logger.info(f"Tool execution debug - state metadata user_id: {real_user_id}")
-        logger.info(f"Tool execution debug - state metadata keys: {list((state.metadata or {}).keys())}")
-        logger.info(f"Tool execution debug - state session_id: {getattr(state, 'session_id', 'NOT_FOUND')}")
-        
-        if real_user_id:
-            base_extracted_params["user_id"] = real_user_id
-            logger.info(f"Tool execution debug - enforced user_id: {real_user_id}")
-        else:
-            logger.warning("Tool execution debug - no real user_id found in state metadata!")
-            # Fallback to hardcoded test user for Studio
-            fallback_user_id = "cmfobnc6v0000xit8qoy6gbrj"
-            base_extracted_params["user_id"] = fallback_user_id
-            logger.warning(f"Tool execution debug - using fallback user_id: {fallback_user_id}")
-        
-        # Execute steps with safe parameters
-        if execution_strategy == "transaction":
-            results, errors = await _execute_with_transaction(steps, base_extracted_params, state)
-        else:
-            results, errors = await _execute_without_transaction(steps, base_extracted_params, state)
-        
-        # Calculate execution statistics
-        total_execution_time = (time.time() - execution_start) * 1000
-        successful_steps = sum(1 for r in results if r.success)
-        failed_steps = len(results) - successful_steps
-        
-        # Determine final execution status
-        if failed_steps == 0:
-            execution_status = "success"
-        elif successful_steps > 0:
-            execution_status = "partial_failure"
-        else:
-            execution_status = "failure"
-        
-        # Prepare tool results dictionary
-        tool_results = {}
-        execution_times = {}
-        
-        for result in results:
-            step_key = f"step_{result.step_index}"
-            tool_results[step_key] = result.to_dict()
-            execution_times[step_key] = result.execution_time_ms
-        
-        # Add tool-specific keys for easier access
-        for result in results:
-            if result.success:
-                tool_results[result.tool_name] = result.to_dict()
-        
-        logger.info(
-            f"Tool execution completed: {execution_status}",
-            extra={
-                "steps_total": len(steps),
-                "steps_successful": successful_steps,
-                "steps_failed": failed_steps,
-                "execution_time_ms": total_execution_time,
+            
+            exec_logger.log_step("completion_message_generation")
+            
+            # Add completion message
+            updated_state = MessageManager.add_system_message(
+                updated_state,
+                f"Tool execution completed: {execution_status} ({successful_steps}/{len(steps)} steps successful)",
+                node_name
+            )
+            
+            exec_logger.log_step("node_complete", {
                 "execution_status": execution_status,
-                "session_id": state.session_id
-            }
-        )
-        
-        # Update state with results
-        updated_state = state.model_copy(update={
-            "tool_results": tool_results,
-            "metadata": {
-                **state.metadata,
+                "successful_steps": successful_steps,
+                "failed_steps": failed_steps,
+                "total_steps": len(steps)
+            })
+            
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
                 "execution_status": execution_status,
                 "execution_errors": errors,
                 "execution_times": execution_times,
-                "total_execution_time_ms": total_execution_time,
                 "steps_completed": successful_steps,
                 "steps_failed": failed_steps,
                 "execution_strategy": execution_strategy,
-                "node_name": node_name,
-                "node_timestamp": start_time.isoformat()
-            }
-        })
-        
-        # Add completion message
-        updated_state = MessageManager.add_system_message(
-            updated_state,
-            f"Tool execution completed: {execution_status} ({successful_steps}/{len(steps)} steps successful)",
-            node_name
-        )
-        
-        return updated_state
-        
-    except Exception as e:
-        execution_time = (time.time() - execution_start) * 1000
-        
-        logger.error(
-            f"Tool execution node failed: {str(e)}",
-            extra={
-                "error": str(e),
-                "execution_time_ms": execution_time,
-                "session_id": state.session_id
-            }
-        )
-        
-        # Add error message
-        state = MessageManager.add_system_message(
-            state,
-            f"Tool execution failed: {str(e)}",
-            node_name
-        )
-        
-        return state.model_copy(update={
-            "metadata": {
-                **state.metadata,
-                "execution_status": "failure",
-                "execution_errors": [f"Tool execution failed: {str(e)}"],
-                "execution_times": {},
-                "total_execution_time_ms": execution_time,
-                "steps_completed": 0,
-                "steps_failed": 0,
-                "node_name": node_name,
-                "node_timestamp": start_time.isoformat()
-            }
-        }) 
+                "total_steps": len(steps),
+                "tool_results_count": len(tool_results)
+            })
+            
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+            
+            return updated_state
+            
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "intent": state.intent.value if state.intent else "unknown",
+                "session_id": state.session_id,
+                "execution_plan_exists": bool(state.execution_plan),
+                "error_context": "tool_execution_node"
+            })
+            
+            # Add error message
+            state = MessageManager.add_system_message(
+                state,
+                f"Tool execution failed: {str(e)}",
+                node_name
+            )
+            
+            error_state = state.model_copy(update={
+                "metadata": {
+                    **state.metadata,
+                    "execution_status": "failure",
+                    "execution_errors": [f"Tool execution failed: {str(e)}"],
+                    "execution_times": {},
+                    "steps_completed": 0,
+                    "steps_failed": 0,
+                    "node_name": node_name,
+                    "node_timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            })
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state 

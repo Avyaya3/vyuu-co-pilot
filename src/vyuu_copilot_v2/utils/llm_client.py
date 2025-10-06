@@ -22,39 +22,87 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Simple centralized LLM client for all node operations.
+    Optimized centralized LLM client for all node operations.
     
-    This client provides a configured OpenAI client that nodes can use directly.
-    Each node is responsible for building its own prompts and handling its own
-    business logic.
+    This client provides task-specific model selection and optimized configurations
+    for different types of operations to maximize performance while maintaining quality.
     """
+    
+    # Task-specific model configurations for optimal performance
+    MODEL_CONFIGS = {
+        "intent_classification": {
+            "model": "gpt-4-turbo",  # Keep high accuracy for classification
+            "temperature": 0.1,
+            "max_tokens": 200,
+            "timeout": 15
+        },
+        "parameter_extraction": {
+            "model": "gpt-3.5-turbo",  # Faster for parameter extraction
+            "temperature": 0.1,
+            "max_tokens": 300,
+            "timeout": 15
+        },
+        "execution_planning": {
+            "model": "gpt-3.5-turbo",  # Faster for planning
+            "temperature": 0.2,
+            "max_tokens": 400,
+            "timeout": 15
+        },
+        "advice_generation": {
+            "model": "gpt-3.5-turbo",  # Faster for advice
+            "temperature": 0.3,
+            "max_tokens": 600,
+            "timeout": 20
+        },
+        "response_synthesis": {
+            "model": "gpt-3.5-turbo",  # Faster for synthesis
+            "temperature": 0.3,
+            "max_tokens": 800,
+            "timeout": 20
+        },
+        "default": {
+            "model": "gpt-3.5-turbo",  # Default to faster model
+            "temperature": 0.2,
+            "max_tokens": 500,
+            "timeout": 15
+        }
+    }
     
     def __init__(
         self, 
-        model: str = "gpt-4-turbo", 
-        temperature: float = 0.2,
-        max_tokens: int = 1500,
-        timeout: int = 30 ):
+        task_type: str = "default",
+        model: Optional[str] = None, 
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[int] = None ):
         """
-        Initialize LLM client with configuration.
+        Initialize LLM client with task-specific optimization.
         
         Args:
-            model: OpenAI model to use (default: gpt-4)
-            temperature: Temperature for generation (default: 0.2)
-            max_tokens: Maximum tokens per response (default: 1500)
-            timeout: Request timeout in seconds (default: 30)
+            task_type: Type of task for optimized configuration
+            model: Override model (optional)
+            temperature: Override temperature (optional)
+            max_tokens: Override max_tokens (optional)
+            timeout: Override timeout (optional)
         """
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set")
         
-        self.client = OpenAI(api_key=api_key, timeout=timeout)
-        self.model = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.timeout = timeout
+        # Get task-specific configuration
+        config = self.MODEL_CONFIGS.get(task_type, self.MODEL_CONFIGS["default"])
         
-        logger.info(f"LLM client initialized: model={model}, temperature={temperature}")
+        # Use overrides if provided, otherwise use task-specific defaults
+        self.model = model or config["model"]
+        self.temperature = temperature if temperature is not None else config["temperature"]
+        self.max_tokens = max_tokens if max_tokens is not None else config["max_tokens"]
+        self.timeout = timeout if timeout is not None else config["timeout"]
+        self.task_type = task_type
+        
+        self.client = OpenAI(api_key=api_key, timeout=self.timeout)
+        
+        logger.info(f"LLM client initialized: task={task_type}, model={self.model}, "
+                   f"temperature={self.temperature}, max_tokens={self.max_tokens}")
     
     async def chat_completion(
         self,
@@ -102,7 +150,7 @@ class LLMClient:
             # Use asyncio.to_thread to make the blocking OpenAI call async
             def _make_openai_call():
                 response = self.client.chat.completions.create(**request_params)
-                return response.choices[0].message.content.strip()
+                return response.choices[0].message.content
             
             content = await asyncio.to_thread(_make_openai_call)
             
@@ -146,4 +194,18 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs
-        ) 
+        )
+    
+    @classmethod
+    def for_task(cls, task_type: str, **kwargs) -> "LLMClient":
+        """
+        Create an LLM client optimized for a specific task type.
+        
+        Args:
+            task_type: Type of task (intent_classification, parameter_extraction, etc.)
+            **kwargs: Additional configuration overrides
+            
+        Returns:
+            Optimized LLMClient instance
+        """
+        return cls(task_type=task_type, **kwargs) 

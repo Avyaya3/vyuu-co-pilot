@@ -18,6 +18,7 @@ from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState, IntentType,
 from vyuu_copilot_v2.schemas.generated_intent_schemas import INTENT_PARAM_MODELS, IntentCategory
 from vyuu_copilot_v2.utils.llm_client import LLMClient
 from vyuu_copilot_v2.nodes.missing_param_analysis_node import get_pydantic_model_for_intent
+from vyuu_copilot_v2.utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +288,7 @@ class ParameterExtractor:
     """Main parameter extraction class with LLM integration."""
     
     def __init__(self, llm_client: Optional[LLMClient] = None):
-        self.llm_client = llm_client or LLMClient()
+        self.llm_client = llm_client or LLMClient.for_task("parameter_extraction")
         self.normalizer = ParameterNormalizer()
         self.validator = ParameterValidator()
     
@@ -603,147 +604,217 @@ async def parameter_extraction_node(state: MainState) -> OrchestratorState:
         OrchestratorState with extracted_params and metadata
     """
     node_name = "parameter_extraction_node"
-    start_time = datetime.now(timezone.utc)
     
-    logger.info(f"Parameter extraction node starting for session {state.session_id[:8]}")
-    
-    try:
-        # Convert MainState to OrchestratorState (first node in subgraph)
-        from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
-        orchestrator_state = StateTransitions.to_orchestrator_state(state)
-        
-        # Add system message for tracking
-        orchestrator_state = MessageManager.add_system_message(
-            orchestrator_state,
-            f"Entering Direct Orchestrator subgraph - starting parameter extraction for {state.intent} intent",
-            node_name
-        )
-        
-        # Get Pydantic model for the intent
-        pydantic_model = get_pydantic_model_for_intent(orchestrator_state.intent)
-        
-        if not pydantic_model:
-            error_msg = f"No Pydantic model found for intent: {orchestrator_state.intent}"
-            logger.error(error_msg)
-            return orchestrator_state.model_copy(update={
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            exec_logger.log_step("node_start", {
+                "intent": state.intent.value if state.intent else "unknown",
+                "user_input_length": len(state.user_input),
+                "coarse_parameters_count": len(state.parameters) if state.parameters else 0
+            })
+            
+            exec_logger.log_step("state_conversion_start")
+            
+            # Convert MainState to OrchestratorState (first node in subgraph)
+            from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
+            orchestrator_state = StateTransitions.to_orchestrator_state(state)
+            
+            exec_logger.log_step("state_conversion_complete", {
+                "converted_to_orchestrator_state": True
+            })
+            
+            # Add system message for tracking
+            orchestrator_state = MessageManager.add_system_message(
+                orchestrator_state,
+                f"Entering Direct Orchestrator subgraph - starting parameter extraction for {state.intent} intent",
+                node_name
+            )
+            
+            exec_logger.log_step("pydantic_model_lookup")
+            
+            # Get Pydantic model for the intent
+            pydantic_model = get_pydantic_model_for_intent(orchestrator_state.intent)
+            
+            if not pydantic_model:
+                error_msg = f"No Pydantic model found for intent: {orchestrator_state.intent}"
+                exec_logger.log_error(Exception(error_msg), {"intent": orchestrator_state.intent.value})
+                
+                error_state = orchestrator_state.model_copy(update={
+                    "metadata": {
+                        **orchestrator_state.metadata,
+                        "extraction_status": "error",
+                        "extraction_errors": [error_msg],
+                        "extraction_confidence": 0.0
+                    }
+                })
+                
+                execution_metrics = exec_logger.end(success=False, error=error_msg, error_type="ModelNotFoundError")
+                error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+                return error_state
+            
+            exec_logger.log_step("extractor_initialization")
+            
+            # Initialize extractor
+            extractor = ParameterExtractor()
+            
+            exec_logger.log_step("llm_parameter_extraction_start", {
+                "pydantic_model": pydantic_model.__name__ if hasattr(pydantic_model, '__name__') else str(pydantic_model)
+            })
+            
+            # Extract parameters using LLM
+            raw_parameters, confidence, reasoning = await extractor.extract_parameters_with_llm(
+                orchestrator_state.intent,
+                orchestrator_state.user_input,
+                orchestrator_state.parameters,  # Coarse parameters from intent classification
+                pydantic_model
+            )
+            
+            exec_logger.log_step("llm_parameter_extraction_complete", {
+                "raw_parameters_count": len(raw_parameters),
+                "confidence": confidence,
+                "reasoning_length": len(reasoning) if reasoning else 0
+            })
+            
+            exec_logger.log_step("parameter_normalization_start")
+            
+            # Normalize parameters
+            normalized_parameters = extractor.normalize_parameters(raw_parameters, pydantic_model)
+            
+            exec_logger.log_step("parameter_normalization_complete", {
+                "normalized_parameters_count": len(normalized_parameters)
+            })
+            
+            exec_logger.log_step("liability_date_processing")
+            
+            # Post-process date extraction for liability entities
+            if (orchestrator_state.intent == IntentCategory.DATABASE_OPERATIONS and 
+                normalized_parameters.get('entity_type') == 'liability' and
+                'start_date' in normalized_parameters and 'end_date' in normalized_parameters):
+                normalized_parameters = extractor.fix_liability_dates(
+                    normalized_parameters, orchestrator_state.user_input
+                )
+                exec_logger.log_step("liability_dates_fixed")
+            
+            exec_logger.log_step("user_id_enrichment")
+            
+            # Always include user_id from the state if it's not already present
+            if 'user_id' in pydantic_model.model_fields and 'user_id' not in normalized_parameters:
+                user_id = orchestrator_state.metadata.get('user_id')
+                if user_id:
+                    normalized_parameters['user_id'] = user_id
+                    exec_logger.log_step("user_id_added_from_state", {"user_id_length": len(user_id)})
+                else:
+                    exec_logger.log_step("user_id_not_found_in_state")
+            
+            exec_logger.log_step("parameter_validation_start")
+            
+            # Validate parameters
+            is_valid, validation_errors = extractor.validate_parameters(normalized_parameters, pydantic_model)
+            
+            exec_logger.log_step("parameter_validation_complete", {
+                "is_valid": is_valid,
+                "validation_errors_count": len(validation_errors)
+            })
+            
+            # Determine extraction status
+            extraction_status = "success" if is_valid and confidence > 0.7 else "incomplete"
+            
+            exec_logger.log_step("state_update_start")
+            
+            # Update state with extracted parameters
+            updated_state = orchestrator_state.model_copy(update={
+                "extracted_params": normalized_parameters,
                 "metadata": {
                     **orchestrator_state.metadata,
-                    "extraction_status": "error",
-                    "extraction_errors": [error_msg],
-                    "extraction_confidence": 0.0
+                    "extraction_status": extraction_status,
+                    "extraction_errors": validation_errors,
+                    "extraction_confidence": confidence,
+                    "extraction_reasoning": reasoning,
+                    "extraction_timestamp": datetime.now(timezone.utc).isoformat()
                 }
             })
-        
-        # Initialize extractor
-        extractor = ParameterExtractor()
-        
-        # Extract parameters using LLM
-        raw_parameters, confidence, reasoning = await extractor.extract_parameters_with_llm(
-            orchestrator_state.intent,
-            orchestrator_state.user_input,
-            orchestrator_state.parameters,  # Coarse parameters from intent classification
-            pydantic_model
-        )
-        
-        # Normalize parameters
-        normalized_parameters = extractor.normalize_parameters(raw_parameters, pydantic_model)
-        
-        # Post-process date extraction for liability entities
-        if (orchestrator_state.intent == IntentCategory.DATABASE_OPERATIONS and 
-            normalized_parameters.get('entity_type') == 'liability' and
-            'start_date' in normalized_parameters and 'end_date' in normalized_parameters):
-            normalized_parameters = extractor.fix_liability_dates(
-                normalized_parameters, orchestrator_state.user_input
+            
+            exec_logger.log_step("response_message_generation")
+            
+            # Add assistant message with extraction results
+            parameter_count = len([v for v in normalized_parameters.values() if v is not None])
+            response_message = (
+                f"Extracted {parameter_count} parameters for {orchestrator_state.intent.value} intent "
+                f"with {confidence:.0%} confidence. Status: {extraction_status}."
             )
-        
-        # Always include user_id from the state if it's not already present
-        if 'user_id' in pydantic_model.model_fields and 'user_id' not in normalized_parameters:
-            user_id = orchestrator_state.metadata.get('user_id')
-            if user_id:
-                normalized_parameters['user_id'] = user_id
-                logger.info(f"Added user_id from state: {user_id[:8]}...")
-            else:
-                logger.warning("user_id not found in state metadata")
-        
-        # Validate parameters
-        is_valid, validation_errors = extractor.validate_parameters(normalized_parameters, pydantic_model)
-        
-        # Determine extraction status
-        extraction_status = "success" if is_valid and confidence > 0.7 else "incomplete"
-        
-        # Update state with extracted parameters
-        updated_state = orchestrator_state.model_copy(update={
-            "extracted_params": normalized_parameters,
-            "metadata": {
-                **orchestrator_state.metadata,
+            
+            if validation_errors:
+                response_message += f" Found {len(validation_errors)} validation issues."
+            
+            updated_state = MessageManager.add_assistant_message(
+                updated_state,
+                response_message,
+                node_name
+            )
+            
+            exec_logger.log_step("node_complete", {
+                "extraction_status": extraction_status,
+                "parameter_count": parameter_count,
+                "confidence": confidence,
+                "validation_errors_count": len(validation_errors)
+            })
+            
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
                 "extraction_status": extraction_status,
                 "extraction_errors": validation_errors,
                 "extraction_confidence": confidence,
                 "extraction_reasoning": reasoning,
-                "extraction_timestamp": start_time.isoformat(),
-                "node_processing_time": (datetime.now(timezone.utc) - start_time).total_seconds()
-            }
-        })
-        
-        # Add assistant message with extraction results
-        parameter_count = len([v for v in normalized_parameters.values() if v is not None])
-        response_message = (
-            f"Extracted {parameter_count} parameters for {orchestrator_state.intent.value} intent "
-            f"with {confidence:.0%} confidence. Status: {extraction_status}."
-        )
-        
-        if validation_errors:
-            response_message += f" Found {len(validation_errors)} validation issues."
-        
-        updated_state = MessageManager.add_assistant_message(
-            updated_state,
-            response_message,
-            node_name
-        )
-        
-        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-        logger.info(
-            f"Parameter extraction completed: {extraction_status} "
-            f"(params: {parameter_count}, confidence: {confidence:.2f}, "
-            f"processing_time: {processing_time:.3f}s)"
-        )
-        
-        return updated_state
-        
-    except Exception as e:
-        logger.error(f"Parameter extraction node failed: {e}")
-        
-        # Convert to orchestrator state for error handling
-        try:
-            from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
-            error_orchestrator_state = StateTransitions.to_orchestrator_state(state)
-        except Exception:
-            # If state conversion fails, create minimal orchestrator state
-            from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState
-            error_orchestrator_state = OrchestratorState(
-                **state.model_dump(),
-                extracted_params={},
-                execution_plan=None,
-                tool_results=None,
-                final_response=None
+                "parameter_count": parameter_count,
+                "is_valid": is_valid,
+                "pydantic_model": pydantic_model.__name__ if hasattr(pydantic_model, '__name__') else str(pydantic_model)
+            })
+            
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+            
+            return updated_state
+            
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "intent": state.intent.value if state.intent else "unknown",
+                "session_id": state.session_id,
+                "error_context": "parameter_extraction_node"
+            })
+            
+            # Convert to orchestrator state for error handling
+            try:
+                from vyuu_copilot_v2.schemas.state_schemas import StateTransitions
+                error_orchestrator_state = StateTransitions.to_orchestrator_state(state)
+            except Exception:
+                # If state conversion fails, create minimal orchestrator state
+                from vyuu_copilot_v2.schemas.state_schemas import OrchestratorState
+                error_orchestrator_state = OrchestratorState(
+                    **state.model_dump(),
+                    extracted_params={},
+                    execution_plan=None,
+                    tool_results=None,
+                    final_response=None
+                )
+            
+            # Add error to state
+            error_state = error_orchestrator_state.model_copy(update={
+                "metadata": {
+                    **error_orchestrator_state.metadata,
+                    "extraction_status": "error",
+                    "extraction_errors": [str(e)],
+                    "extraction_confidence": 0.0
+                }
+            })
+            
+            # Add error message
+            error_state = MessageManager.add_assistant_message(
+                error_state,
+                f"Parameter extraction failed: {str(e)}",
+                node_name
             )
-        
-        # Add error to state
-        error_state = error_orchestrator_state.model_copy(update={
-            "metadata": {
-                **error_orchestrator_state.metadata,
-                "extraction_status": "error",
-                "extraction_errors": [str(e)],
-                "extraction_confidence": 0.0,
-                "node_processing_time": (datetime.now(timezone.utc) - start_time).total_seconds()
-            }
-        })
-        
-        # Add error message
-        error_state = MessageManager.add_assistant_message(
-            error_state,
-            f"Parameter extraction failed: {str(e)}",
-            node_name
-        )
-        
-        return error_state 
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state 

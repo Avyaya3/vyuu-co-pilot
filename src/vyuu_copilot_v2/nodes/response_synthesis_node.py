@@ -22,6 +22,7 @@ from ..schemas.state_schemas import OrchestratorState, MessageManager
 from ..schemas.generated_intent_schemas import IntentCategory
 from ..utils.llm_client import LLMClient
 from ..utils.data_formatters import DataFormatter
+from ..utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class ResponseSynthesizer:
     """
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
-        self.llm_client = llm_client or LLMClient()
+        self.llm_client = llm_client or LLMClient.for_task("response_synthesis")
         self.formatter = DataFormatter()
 
     async def synthesize_response(
@@ -574,87 +575,123 @@ async def response_synthesis_node(state: OrchestratorState) -> OrchestratorState
         Updated OrchestratorState with final_response
     """
     node_name = "response_synthesis_node"
-    start_time = datetime.now(timezone.utc)
-    synthesis_start = time.time()
+    
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            exec_logger.log_step("node_start", {
+                "intent": state.intent.value if state.intent else "unknown",
+                "tool_results_exists": bool(state.tool_results),
+                "tool_results_count": len(state.tool_results) if state.tool_results else 0
+            })
 
-    logger.info(f"Response synthesis node starting for session {state.session_id[:8]}")
+            # Add system message for tracking
+            state = MessageManager.add_system_message(
+                state,
+                f"Starting response synthesis for {state.intent.value if state.intent else 'unknown'} intent",
+                node_name,
+            )
 
-    # Add system message for tracking
-    state = MessageManager.add_system_message(
-        state,
-        f"Starting response synthesis for {state.intent.value if state.intent else 'unknown'} intent",
-        node_name,
-    )
+            exec_logger.log_step("tool_results_validation")
 
-    try:
-        # Validate tool results exist
-        if not state.tool_results:
-            error_msg = "No tool results available for response synthesis"
-            logger.error(error_msg)
-            return state.model_copy(
+            # Validate tool results exist
+            if not state.tool_results:
+                error_msg = "No tool results available for response synthesis"
+                exec_logger.log_error(Exception(error_msg), {"error_type": "missing_tool_results"})
+                
+                error_state = state.model_copy(
+                    update={
+                        "final_response": "I'm sorry, but I couldn't process your request. Please try again.",
+                        "metadata": {
+                            **state.metadata,
+                            "synthesis_status": "error",
+                            "synthesis_errors": [error_msg],
+                            "synthesis_time_ms": 0.0,
+                            "node_name": node_name,
+                            "node_timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }
+                )
+                
+                execution_metrics = exec_logger.end(success=False, error=error_msg, error_type="MissingToolResultsError")
+                error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+                return error_state
+
+            exec_logger.log_step("synthesizer_initialization")
+
+            # Initialize synthesizer
+            synthesizer = ResponseSynthesizer()
+
+            exec_logger.log_step("response_generation_start", {
+                "tool_results_keys": list(state.tool_results.keys()) if state.tool_results else []
+            })
+
+            # Generate response
+            final_response = await synthesizer.synthesize_response(
+                state, state.tool_results
+            )
+
+            exec_logger.log_step("response_generation_complete", {
+                "response_length": len(final_response),
+                "response_preview": final_response[:100] + "..." if len(final_response) > 100 else final_response
+            })
+
+            exec_logger.log_step("state_update_start")
+
+            # Update state with final response
+            updated_state = state.model_copy(
                 update={
-                    "final_response": "I'm sorry, but I couldn't process your request. Please try again.",
+                    "final_response": final_response,
                     "metadata": {
                         **state.metadata,
-                        "synthesis_status": "error",
-                        "synthesis_errors": [error_msg],
-                        "synthesis_time_ms": 0.0,
+                        "synthesis_status": "success",
                         "node_name": node_name,
-                        "node_timestamp": start_time.isoformat(),
+                        "node_timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }
             )
 
-        # Initialize synthesizer
-        synthesizer = ResponseSynthesizer()
-
-        # Generate response
-        final_response = await synthesizer.synthesize_response(
-            state, state.tool_results
-        )
-
-        # Calculate synthesis time
-        synthesis_time = (time.time() - synthesis_start) * 1000
-
-        # Update state with final response
-        updated_state = state.model_copy(
-            update={
-                "final_response": final_response,
-                "metadata": {
-                    **state.metadata,
-                    "synthesis_status": "success",
-                    "synthesis_time_ms": synthesis_time,
-                    "node_name": node_name,
-                    "node_timestamp": start_time.isoformat(),
-                },
-            }
-        )
-
-        logger.info(
-            f"Response synthesis completed for session {state.session_id[:8]}",
-            extra={
-                "synthesis_time_ms": synthesis_time,
+            exec_logger.log_step("node_complete", {
+                "synthesis_status": "success",
                 "response_length": len(final_response),
-                "intent": state.intent.value if state.intent else None,
-            },
-        )
+                "final_response_generated": True
+            })
 
-        return updated_state
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
+                "synthesis_status": "success",
+                "response_length": len(final_response),
+                "tool_results_count": len(state.tool_results) if state.tool_results else 0,
+                "intent": state.intent.value if state.intent else "unknown"
+            })
 
-    except Exception as e:
-        logger.error(f"Response synthesis node failed: {e}")
-        
-        # Return state with error response
-        return state.model_copy(
-            update={
-                "final_response": "I'm sorry, but I encountered an error while processing your request. Please try again.",
-                "metadata": {
-                    **state.metadata,
-                    "synthesis_status": "error",
-                    "synthesis_errors": [str(e)],
-                    "synthesis_time_ms": (time.time() - synthesis_start) * 1000,
-                    "node_name": node_name,
-                    "node_timestamp": start_time.isoformat(),
-                },
-            }
-        )
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+
+            return updated_state
+
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "intent": state.intent.value if state.intent else "unknown",
+                "session_id": state.session_id,
+                "tool_results_exists": bool(state.tool_results),
+                "error_context": "response_synthesis_node"
+            })
+            
+            # Return state with error response
+            error_state = state.model_copy(
+                update={
+                    "final_response": "I'm sorry, but I encountered an error while processing your request. Please try again.",
+                    "metadata": {
+                        **state.metadata,
+                        "synthesis_status": "error",
+                        "synthesis_errors": [str(e)],
+                        "node_name": node_name,
+                        "node_timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }
+            )
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state

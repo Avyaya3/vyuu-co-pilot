@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager, IntentType
 from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory, ConfidenceLevel
 from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
+from vyuu_copilot_v2.utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 logger = logging.getLogger(__name__)
 
@@ -424,89 +425,128 @@ async def decision_router_node(state: MainState) -> MainState:
         MainState with routing decision and metadata
     """
     node_name = "decision_router_node"
-    start_time = datetime.now(timezone.utc)
     
-    try:
-        logger.info(f"Decision router processing session: {state.session_id[:8]}...")
-        
-        # Add system message for tracking
-        state = MessageManager.add_system_message(
-            state,
-            f"Starting routing decision for intent: {state.intent.value if state.intent else 'unknown'}",
-            node_name
-        )
-        
-        # Initialize router with default config
-        router = DecisionRouter()
-        
-        # Make routing decision
-        routing_result = router.route_intent(state)
-        
-        # Update state with routing decision using model_copy
-        updated_state = state.model_copy(update={
-            "metadata": {
-                **state.metadata,
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            exec_logger.log_step("node_start", {
+                "intent": state.intent.value if state.intent else "unknown",
+                "confidence": state.confidence,
+                "parameters_count": len(state.parameters) if state.parameters else 0
+            })
+            
+            # Add system message for tracking
+            state = MessageManager.add_system_message(
+                state,
+                f"Starting routing decision for intent: {state.intent.value if state.intent else 'unknown'}",
+                node_name
+            )
+            
+            exec_logger.log_step("router_initialization")
+            
+            # Initialize router with default config
+            router = DecisionRouter()
+            
+            exec_logger.log_step("routing_decision_start", {
+                "router_config": router.config.model_dump()
+            })
+            
+            # Make routing decision
+            routing_result = router.route_intent(state)
+            
+            exec_logger.log_step("routing_decision_complete", {
+                "decision": routing_result.decision,
+                "reason": routing_result.reason.value,
+                "confidence_score": routing_result.confidence_score,
+                "parameters_complete": routing_result.parameters_complete,
+                "missing_params_count": len(routing_result.missing_params),
+                "processing_time_ms": routing_result.processing_time_ms
+            })
+            
+            exec_logger.log_step("state_update_start")
+            
+            # Update state with routing decision using model_copy
+            updated_state = state.model_copy(update={
+                "metadata": {
+                    **state.metadata,
+                    "routing_decision": routing_result.decision,
+                    "routing_reason": routing_result.reason.value,
+                    "routing_explanation": routing_result.routing_explanation,
+                    "routing_result": routing_result.model_dump(),
+                    "router_config": router.config.model_dump()
+                }
+            })
+            
+            exec_logger.log_step("response_message_generation")
+            
+            # Add assistant message with routing decision
+            routing_message = (
+                f"Based on your request classification (intent: {state.intent.value if state.intent else 'unknown'}, "
+                f"confidence: {state.confidence:.0%}), I've determined the next step: {routing_result.decision}. "
+                f"{routing_result.routing_explanation}"
+            )
+            
+            updated_state = MessageManager.add_assistant_message(
+                updated_state,
+                routing_message,
+                node_name
+            )
+            
+            exec_logger.log_step("node_complete", {
+                "final_decision": routing_result.decision,
+                "final_reason": routing_result.reason.value,
+                "routing_explanation": routing_result.routing_explanation
+            })
+            
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
                 "routing_decision": routing_result.decision,
                 "routing_reason": routing_result.reason.value,
                 "routing_explanation": routing_result.routing_explanation,
                 "routing_result": routing_result.model_dump(),
-                "node_processing_time": (datetime.now(timezone.utc) - start_time).total_seconds(),
-                "router_config": router.config.model_dump()
-            }
-        })
-        
-        # Add assistant message with routing decision
-        routing_message = (
-            f"Based on your request classification (intent: {state.intent.value if state.intent else 'unknown'}, "
-            f"confidence: {state.confidence:.0%}), I've determined the next step: {routing_result.decision}. "
-            f"{routing_result.routing_explanation}"
-        )
-        
-        updated_state = MessageManager.add_assistant_message(
-            updated_state,
-            routing_message,
-            node_name
-        )
-        
-        # Log success
-        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-        logger.info(
-            f"Decision router completed successfully: "
-            f"decision={routing_result.decision}, reason={routing_result.reason.value}, "
-            f"processing_time={processing_time:.3f}s"
-        )
-        
-        return updated_state
-        
-    except Exception as e:
-        # Log error and add to state metadata
-        error_message = f"Decision router failed: {str(e)}"
-        logger.error(error_message)
-        
-        # Add error tracking to state using model_copy
-        error_state = state.model_copy(update={
-            "metadata": {
-                **state.metadata,
-                "routing_decision": "clarification",  # Fallback to clarification
-                "routing_reason": "error_condition",
-                "routing_explanation": f"Router failed with error: {str(e)}. Defaulting to clarification.",
-                "error": {
-                    "node": node_name,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                "router_config": router.config.model_dump(),
+                "routing_processing_time_ms": routing_result.processing_time_ms
+            })
+            
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+            
+            return updated_state
+            
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "intent": state.intent.value if state.intent else "unknown",
+                "confidence": state.confidence,
+                "session_id": state.session_id,
+                "error_context": "decision_router_node"
+            })
+            
+            # Add error tracking to state using model_copy
+            error_state = state.model_copy(update={
+                "metadata": {
+                    **state.metadata,
+                    "routing_decision": "clarification",  # Fallback to clarification
+                    "routing_reason": "error_condition",
+                    "routing_explanation": f"Router failed with error: {str(e)}. Defaulting to clarification.",
+                    "error": {
+                        "node": node_name,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
                 }
-            }
-        })
-        
-        # Add error message
-        error_state = MessageManager.add_system_message(
-            error_state,
-            f"Error in decision router: {str(e)}. Defaulting to clarification.",
-            node_name
-        )
-        
-        return error_state
+            })
+            
+            # Add error message
+            error_state = MessageManager.add_system_message(
+                error_state,
+                f"Error in decision router: {str(e)}. Defaulting to clarification.",
+                node_name
+            )
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state
 
 
 def get_routing_decision(state: MainState) -> str:

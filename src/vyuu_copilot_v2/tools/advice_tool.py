@@ -36,10 +36,11 @@ class AdviceTool(ToolInterface):
     schema = AdviceParams
     
     def __init__(self):
-        """Initialize the advice tool."""
+        """Initialize the advice tool with optimized LLM client."""
         self.logger = logging.getLogger(__name__)
         try:
-            self.llm_client = LLMClient()
+            # Use task-specific optimized LLM client for advice generation
+            self.llm_client = LLMClient.for_task("advice_generation")
         except ValueError as e:
             self.logger.warning(f"LLM client initialization failed: {e}")
             self.llm_client = None
@@ -102,12 +103,11 @@ class AdviceTool(ToolInterface):
         # Build the user prompt with context
         user_prompt = self._build_user_prompt(params)
         
-        # Call LLM for advice
+        # Call LLM for advice using optimized settings
+        # Uses task-specific optimized settings: gpt-3.5-turbo, temperature=0.3, max_tokens=600
         advice_response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.7,  # Slightly creative for advice
-            max_tokens=1000
+            user_prompt=user_prompt
         )
         
         return {
@@ -118,33 +118,16 @@ class AdviceTool(ToolInterface):
         }
     
     def _build_system_prompt(self) -> str:
-        """Build the system prompt for financial advice."""
-        return """You are a professional financial advisor with expertise in personal finance, investment strategies, budgeting, and financial planning. 
+        """Build an optimized, concise system prompt for financial advice."""
+        return """You are a financial advisor. Provide concise, actionable advice in 3-5 bullet points.
 
-Your role is to provide personalized, actionable financial advice based on the user's specific situation and financial data.
+Guidelines:
+- Be specific and actionable
+- Use the user's financial data when available
+- Prioritize security and realistic goals
+- Keep advice practical and implementable
 
-Guidelines for your advice:
-1. Be specific and actionable - provide concrete steps the user can take
-2. Consider the user's financial context and data when available
-3. Prioritize financial security and risk management
-4. Explain the reasoning behind your recommendations
-5. Be encouraging but realistic about financial goals
-6. Consider different time horizons (short-term, medium-term, long-term)
-7. Address both opportunities and potential risks
-8. Keep advice practical and implementable
-
-Areas of expertise:
-- Budgeting and expense management
-- Investment strategies and portfolio allocation
-- Debt management and reduction
-- Savings goals and emergency funds
-- Retirement planning
-- Insurance needs assessment
-- Tax optimization strategies
-- Real estate and major purchases
-- Financial goal setting and tracking
-
-Always provide clear, well-structured advice that the user can understand and act upon."""
+Focus on: budgeting, savings, investments, debt management, and financial planning."""
     
     def _build_user_prompt(self, params: AdviceParams) -> str:
         """Build the user prompt with query and context."""
@@ -215,17 +198,9 @@ Always provide clear, well-structured advice that the user can understand and ac
         else:
             prompt_parts.append("\nNote: No specific financial data context was provided.")
         
-        # Add request for structured advice
+        # Add request for concise advice
         prompt_parts.append("""
-Please provide comprehensive financial advice addressing the user's question. Structure your response with:
-
-1. **Summary**: Brief overview of the situation based on their financial profile
-2. **Analysis**: Key insights based on their specific financial data
-3. **Recommendations**: Specific, actionable steps tailored to their situation
-4. **Timeline**: When to implement each recommendation
-5. **Next Steps**: Immediate actions they can take
-
-Make your advice specific to their financial situation, use their actual numbers, and provide concrete recommendations based on their data.""")
+Provide specific, actionable financial advice in 3-5 bullet points. Use their financial data and provide concrete next steps.""")
         
         return "\n".join(prompt_parts)
 

@@ -30,6 +30,7 @@ from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     AdviceParams,
 )
 from vyuu_copilot_v2.utils.llm_client import LLMClient
+from vyuu_copilot_v2.utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 # Load environment variables
 load_dotenv()
@@ -50,13 +51,13 @@ class IntentClassifier:
     
     def __init__(self, llm_client: Optional[LLMClient] = None):
         """
-        Initialize the intent classifier.
+        Initialize the intent classifier with optimized LLM client.
         
         Args:
-            llm_client: Optional LLM client instance. If not provided, creates new one.
+            llm_client: Optional LLM client instance. If not provided, creates optimized one.
         """
-        self.llm_client = llm_client or LLMClient()
-        logger.info("Intent classifier initialized with centralized LLM client")
+        self.llm_client = llm_client or LLMClient.for_task("intent_classification")
+        logger.info("Intent classifier initialized with optimized LLM client for classification")
     
     async def classify_intent(self, user_input: str, conversation_context: str = "") -> IntentClassificationResult:
         """
@@ -239,123 +240,159 @@ async def intent_classification_node(state: MainState) -> MainState:
     and extracted parameters.
     """
     node_name = "intent_classification_node"
-    start_time = datetime.now(timezone.utc)
     
-    try:
-        logger.info(f"Intent classification node processing session: {state.session_id[:8]}...")
-        
-        # Add system message for tracking
-        state = MessageManager.add_system_message(
-            state,
-            f"Starting OpenAI intent classification for: '{state.user_input[:50]}...'",
-            node_name
-        )
-        
-        # Get conversation context for better classification
-        recent_messages = ConversationContext.get_recent_context(state, 5)
-        conversation_context = "\n".join([
-            f"{msg.role}: {msg.content}" for msg in recent_messages
-        ])
-        
-        # Initialize classifier and classify intent
-        classifier = IntentClassifier()
-        classification_result = await classifier.classify_intent(
-            state.user_input,
-            conversation_context
-        )
-        
-        # Convert IntentCategory to IntentType for state compatibility
-        intent_mapping = {
-            IntentCategory.READ: IntentType.READ,
-            IntentCategory.DATABASE_OPERATIONS: IntentType.DATABASE_OPERATIONS,
-            IntentCategory.ADVICE: IntentType.ADVICE,
-            IntentCategory.UNKNOWN: IntentType.UNKNOWN,
-        }
-        
-        # Update state with classification results
-        state_data = state.model_dump()
-        # Remove fields we want to override
-        state_data.pop('intent', None)
-        state_data.pop('confidence', None)
-        state_data.pop('metadata', None)
-        state_data.pop('parameters', None)
-        
-        updated_state = MainState(
-            **state_data,
-            intent=intent_mapping[classification_result.intent],
-            confidence=classification_result.confidence,
-            metadata={
-                **state.metadata,
-                "classification_result": classification_result.model_dump(),
-                "node_processing_time": (datetime.now(timezone.utc) - start_time).total_seconds(),
-                "llm_provider": "openai"
-            },
-            parameters=classification_result.extracted_parameters,
-        )
-        
-        # Add assistant message with classification result
-        response_message = (
-            f"I've analyzed your request using OpenAI: '{state.user_input}'. "
-            f"I've classified it as a {classification_result.intent.value} intent "
-            f"with {classification_result.confidence:.0%} confidence."
-        )
-        
-        if classification_result.extracted_parameters:
-            response_message += f" I've extracted {len(classification_result.extracted_parameters)} parameters."
-        
-        if classification_result.requires_clarification:
-            response_message += " I'll need some additional information to proceed."
-        
-        updated_state = MessageManager.add_assistant_message(
-            updated_state,
-            response_message,
-            node_name
-        )
-        
-        # Log success
-        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-        logger.info(
-            f"OpenAI intent classification node completed successfully: "
-            f"{classification_result.intent} (confidence: {classification_result.confidence:.2f}, "
-            f"params: {len(classification_result.extracted_parameters)}, "
-            f"processing_time: {processing_time:.3f}s)"
-        )
-        
-        return updated_state
-        
-    except Exception as e:
-        # Log error and add to state metadata
-        error_message = f"OpenAI intent classification failed: {str(e)}"
-        logger.error(error_message)
-        
-        # Add error tracking to state
-        error_state = MainState(
-            user_input=state.user_input,
-            intent=IntentType.UNKNOWN,
-            confidence=0.0,
-            messages=state.messages,
-            session_id=state.session_id,
-            timestamp=state.timestamp,
-            metadata={
-                **state.metadata,
-                "error": {
-                    "node": node_name,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            exec_logger.log_step("node_start", {
+                "user_input_length": len(state.user_input),
+                "user_input_preview": state.user_input[:50] + "..." if len(state.user_input) > 50 else state.user_input
+            })
+            
+            # Add system message for tracking
+            state = MessageManager.add_system_message(
+                state,
+                f"Starting OpenAI intent classification for: '{state.user_input[:50]}...'",
+                node_name
+            )
+            
+            exec_logger.log_step("conversation_context_extraction")
+            
+            # Get conversation context for better classification
+            recent_messages = ConversationContext.get_recent_context(state, 5)
+            conversation_context = "\n".join([
+                f"{msg.role}: {msg.content}" for msg in recent_messages
+            ])
+            
+            exec_logger.log_step("classifier_initialization")
+            
+            # Initialize classifier and classify intent
+            classifier = IntentClassifier()
+            
+            exec_logger.log_step("intent_classification_start", {
+                "conversation_context_length": len(conversation_context),
+                "recent_messages_count": len(recent_messages)
+            })
+            
+            classification_result = await classifier.classify_intent(
+                state.user_input,
+                conversation_context
+            )
+            
+            exec_logger.log_step("intent_classification_complete", {
+                "classified_intent": classification_result.intent.value,
+                "confidence": classification_result.confidence,
+                "extracted_params_count": len(classification_result.extracted_parameters),
+                "requires_clarification": classification_result.requires_clarification
+            })
+            
+            # Convert IntentCategory to IntentType for state compatibility
+            intent_mapping = {
+                IntentCategory.READ: IntentType.READ,
+                IntentCategory.DATABASE_OPERATIONS: IntentType.DATABASE_OPERATIONS,
+                IntentCategory.ADVICE: IntentType.ADVICE,
+                IntentCategory.UNKNOWN: IntentType.UNKNOWN,
+            }
+            
+            exec_logger.log_step("state_update_start")
+            
+            # Update state with classification results
+            state_data = state.model_dump()
+            # Remove fields we want to override
+            state_data.pop('intent', None)
+            state_data.pop('confidence', None)
+            state_data.pop('metadata', None)
+            state_data.pop('parameters', None)
+            
+            updated_state = MainState(
+                **state_data,
+                intent=intent_mapping[classification_result.intent],
+                confidence=classification_result.confidence,
+                metadata={
+                    **state.metadata,
+                    "classification_result": classification_result.model_dump(),
                     "llm_provider": "openai"
-                }
-            },
-            parameters={},
-            execution_results=state.execution_results,
-            response=state.response
-        )
-        
-        # Add error message
-        error_state = MessageManager.add_system_message(
-            error_state,
-            f"Error in OpenAI intent classification: {str(e)}",
-            node_name
-        )
-        
-        return error_state 
+                },
+                parameters=classification_result.extracted_parameters,
+            )
+            
+            exec_logger.log_step("response_message_generation")
+            
+            # Add assistant message with classification result
+            response_message = (
+                f"I've analyzed your request using OpenAI: '{state.user_input}'. "
+                f"I've classified it as a {classification_result.intent.value} intent "
+                f"with {classification_result.confidence:.0%} confidence."
+            )
+            
+            if classification_result.extracted_parameters:
+                response_message += f" I've extracted {len(classification_result.extracted_parameters)} parameters."
+            
+            if classification_result.requires_clarification:
+                response_message += " I'll need some additional information to proceed."
+            
+            updated_state = MessageManager.add_assistant_message(
+                updated_state,
+                response_message,
+                node_name
+            )
+            
+            exec_logger.log_step("node_complete", {
+                "final_intent": classification_result.intent.value,
+                "final_confidence": classification_result.confidence,
+                "final_params_count": len(classification_result.extracted_parameters)
+            })
+            
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
+                "classification_result": classification_result.model_dump(),
+                "llm_provider": "openai",
+                "intent_mapping_applied": True,
+                "response_message_generated": True
+            })
+            
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+            
+            return updated_state
+            
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "user_input": state.user_input,
+                "session_id": state.session_id,
+                "error_context": "intent_classification_node"
+            })
+            
+            # Add error tracking to state
+            error_state = MainState(
+                user_input=state.user_input,
+                intent=IntentType.UNKNOWN,
+                confidence=0.0,
+                messages=state.messages,
+                session_id=state.session_id,
+                timestamp=state.timestamp,
+                metadata={
+                    **state.metadata,
+                    "error": {
+                        "node": node_name,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "llm_provider": "openai"
+                    }
+                },
+                parameters={},
+                execution_results=state.execution_results,
+                response=state.response
+            )
+            
+            # Add error message
+            error_state = MessageManager.add_system_message(
+                error_state,
+                f"Error in OpenAI intent classification: {str(e)}",
+                node_name
+            )
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state 

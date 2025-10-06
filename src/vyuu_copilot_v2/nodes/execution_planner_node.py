@@ -24,6 +24,7 @@ from ..schemas.state_schemas import OrchestratorState, PlanStep, ExecutionPlan
 from ..schemas.generated_intent_schemas import IntentCategory
 from ..tools import TOOL_REGISTRY, get_tool_info, get_tool_schema
 from ..utils.llm_client import LLMClient
+from ..utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
 logger = logging.getLogger(__name__)
 
@@ -61,102 +62,128 @@ async def execution_planner_node(state: OrchestratorState) -> OrchestratorState:
     Returns:
         Updated state with validated execution plan and metadata
     """
-    start_time = time.time()
-    planning_errors = []
-    planning_status = "error"
+    node_name = "execution_planner_node"
     
-    logger.info(
-        f"Starting execution planning for intent: {state.intent}",
-        extra={
-            "intent": state.intent.value if state.intent else None,
-            "session_id": state.session_id,
-            "extracted_params": len(state.extracted_params) if state.extracted_params else 0
-        }
-    )
-    
-    try:
-        # Step 1: Generate LLM draft plan
-        draft_plan = await _generate_llm_draft_plan(state)
-        
-        if not draft_plan:
-            planning_errors.append("LLM failed to generate valid plan")
-            # Create fallback plan
-            draft_plan = _create_fallback_plan(state)
-        
-        # Step 2: Validate and sanitize draft plan
-        validated_steps, validation_errors = await _validate_and_sanitize_plan(
-            draft_plan, 
-            state.extracted_params
-        )
-        
-        planning_errors.extend(validation_errors)
-        
-        # Step 3: Build final execution plan
-        if validated_steps:
-            execution_plan = ExecutionPlan(steps=validated_steps)
-            planning_status = "success"
+    async with track_node_execution(node_name, state.session_id) as exec_logger:
+        try:
+            planning_errors = []
+            planning_status = "error"
             
-            logger.info(
-                f"Execution plan created successfully with {len(validated_steps)} steps",
-                extra={
-                    "steps_count": len(validated_steps),
-                    "planning_time_ms": (time.time() - start_time) * 1000,
-                    "session_id": state.session_id
-                }
+            exec_logger.log_step("node_start", {
+                "intent": state.intent.value if state.intent else "unknown",
+                "extracted_params_count": len(state.extracted_params) if state.extracted_params else 0,
+                "extracted_params_keys": list(state.extracted_params.keys()) if state.extracted_params else []
+            })
+            
+            exec_logger.log_step("llm_draft_plan_generation_start")
+            
+            # Step 1: Generate LLM draft plan
+            draft_plan = await _generate_llm_draft_plan(state)
+            
+            if not draft_plan:
+                planning_errors.append("LLM failed to generate valid plan")
+                exec_logger.log_step("llm_plan_failed_fallback_creation")
+                # Create fallback plan
+                draft_plan = _create_fallback_plan(state)
+            else:
+                exec_logger.log_step("llm_draft_plan_generated", {
+                    "draft_steps_count": len(draft_plan)
+                })
+            
+            exec_logger.log_step("plan_validation_start")
+            
+            # Step 2: Validate and sanitize draft plan
+            validated_steps, validation_errors = await _validate_and_sanitize_plan(
+                draft_plan, 
+                state.extracted_params
             )
-        else:
-            planning_errors.append("No valid steps remained after validation")
-            execution_plan = ExecutionPlan(steps=[])
             
-            logger.warning(
-                "No valid steps in execution plan",
-                extra={
+            planning_errors.extend(validation_errors)
+            
+            exec_logger.log_step("plan_validation_complete", {
+                "validated_steps_count": len(validated_steps),
+                "validation_errors_count": len(validation_errors)
+            })
+            
+            exec_logger.log_step("execution_plan_creation")
+            
+            # Step 3: Build final execution plan
+            if validated_steps:
+                execution_plan = ExecutionPlan(steps=validated_steps)
+                planning_status = "success"
+                
+                exec_logger.log_step("execution_plan_created_successfully", {
+                    "final_steps_count": len(validated_steps),
+                    "planning_status": planning_status
+                })
+            else:
+                planning_errors.append("No valid steps remained after validation")
+                execution_plan = ExecutionPlan(steps=[])
+                
+                exec_logger.log_step("execution_plan_creation_failed", {
+                    "planning_errors": planning_errors
+                })
+            
+            exec_logger.log_step("state_update_start")
+            
+            # Step 4: Update state
+            updated_state = state.model_copy(update={
+                "execution_plan": execution_plan.dict(),
+                "metadata": {
+                    **state.metadata,
+                    "planning_status": planning_status,
                     "planning_errors": planning_errors,
-                    "session_id": state.session_id
+                    "llm_planning_used": True,
+                    "steps_generated": len(validated_steps)
                 }
-            )
-        
-        # Step 4: Update state
-        updated_state = state.model_copy(update={
-            "execution_plan": execution_plan.dict(),
-            "metadata": {
-                **state.metadata,
+            })
+            
+            exec_logger.log_step("node_complete", {
+                "planning_status": planning_status,
+                "final_steps_count": len(validated_steps),
+                "planning_errors_count": len(planning_errors)
+            })
+            
+            # Add execution metrics to state
+            execution_metrics = exec_logger.end(success=True, metadata={
                 "planning_status": planning_status,
                 "planning_errors": planning_errors,
-                "planning_time_ms": (time.time() - start_time) * 1000,
                 "llm_planning_used": True,
-                "steps_generated": len(validated_steps)
-            }
-        })
-        
-        return updated_state
-        
-    except Exception as e:
-        execution_time = (time.time() - start_time) * 1000
-        error_msg = f"Execution planning failed: {str(e)}"
-        planning_errors.append(error_msg)
-        
-        logger.error(
-            error_msg,
-            extra={
-                "error": str(e),
-                "intent": state.intent.value if state.intent else None,
+                "steps_generated": len(validated_steps),
+                "draft_plan_steps": len(draft_plan) if draft_plan else 0,
+                "validation_errors_count": len(validation_errors)
+            })
+            
+            updated_state = add_execution_metrics_to_state(updated_state, execution_metrics)
+            
+            return updated_state
+            
+        except Exception as e:
+            exec_logger.log_error(e, {
+                "intent": state.intent.value if state.intent else "unknown",
                 "session_id": state.session_id,
-                "execution_time_ms": execution_time
-            },
-            exc_info=True
-        )
-        
-        # Return error state
-        return state.model_copy(update={
-            "metadata": {
-                **state.metadata,
-                "planning_status": "error",
-                "planning_errors": planning_errors,
-                "planning_time_ms": execution_time,
-                "node_error": error_msg
-            }
-        })
+                "extracted_params_count": len(state.extracted_params) if state.extracted_params else 0,
+                "error_context": "execution_planner_node"
+            })
+            
+            error_msg = f"Execution planning failed: {str(e)}"
+            planning_errors = [error_msg]
+            
+            # Return error state
+            error_state = state.model_copy(update={
+                "metadata": {
+                    **state.metadata,
+                    "planning_status": "error",
+                    "planning_errors": planning_errors,
+                    "node_error": error_msg
+                }
+            })
+            
+            # Add execution metrics to error state
+            execution_metrics = exec_logger.end(success=False, error=str(e), error_type=type(e).__name__)
+            error_state = add_execution_metrics_to_state(error_state, execution_metrics)
+            
+            return error_state
 
 
 async def _generate_llm_draft_plan(state: OrchestratorState) -> Optional[List[Dict[str, Any]]]:
@@ -170,7 +197,7 @@ async def _generate_llm_draft_plan(state: OrchestratorState) -> Optional[List[Di
         List of draft plan steps or None if generation fails
     """
     try:
-        llm_client = LLMClient()
+        llm_client = LLMClient.for_task("execution_planning")
         
         # Build tool descriptions and intent context
         tool_info = get_tool_info()
