@@ -25,6 +25,7 @@ from vyuu_copilot_v2.schemas.generated_intent_schemas import (
     IntentClassificationError,
     FallbackIntentResult,
     IntentCategory,
+    IntentEntry,
     ReadParams,
     DatabaseOperationsParams,
     AdviceParams,
@@ -86,7 +87,7 @@ class IntentClassifier:
             # Build system prompt for intent classification
             system_prompt = """You are an AI assistant specialized in classifying user intents for a financial management application.
 
-Your task is to analyze user requests and classify them into one of these intent categories:
+Your task is to analyze user requests and classify them into one or more intent categories:
 
 1. **read**: User wants to retrieve/view existing financial data
 - Examples: "Show me my transactions", "What's my balance?", "List my accounts"
@@ -102,7 +103,16 @@ Your task is to analyze user requests and classify them into one of these intent
 
 4. **unknown**: Intent is unclear or doesn't fit the above categories
 
-CRITICAL: You must respond with a valid JSON object with this exact structure:
+**MULTI-INTENT DETECTION:**
+- A single user request can contain multiple distinct intents
+- Example: "Show me my expenses and give me budgeting advice" = [read, advice]
+- Example: "Transfer ₹1000 to savings and show me the updated balance" = [database_operations, read]
+- Example: "Show my budget, create a savings goal, and give me investment advice" = [read, database_operations, advice]
+
+**RESPONSE FORMAT:**
+Return JSON in one of these formats:
+
+**Single Intent (existing format):**
 {
 "intent": "read|database_operations|advice|unknown",
 "confidence": 0.85,
@@ -110,39 +120,50 @@ CRITICAL: You must respond with a valid JSON object with this exact structure:
 "user_input_analysis": "analysis of the input",
 "missing_params": ["param1", "param2"],
 "clarification_needed": true,
-"read_params": {
-    "entity_type": "transactions",
-    "account_types": ["checking", "savings"],
-    "time_period": "last_month",
-    "limit": 10,
-    "sort_by": "date",
-    "order": "desc"
-},
-"database_operations_params": {
-    "action_type": "create",
-    "entity_type": "budget",
-    "entity_id": null,
-    "data": {"name": "Monthly Budget", "amount": 1000},
-    "user_id": "user123"
-},
-"advice_params": {
-    "user_query": "How can I save more money?",
-    "context_data": "User has monthly income of ₹5000 and expenses of ₹4000",
-    "user_id": "user123"
+"read_params": { ... },
+"database_operations_params": { ... },
+"advice_params": { ... }
 }
+
+**Multiple Intents (new format):**
+{
+"multiple_intents": [
+    {
+        "intent": "read",
+        "confidence": 0.9,
+        "reasoning": "User wants to view financial data",
+        "params": {
+            "entity_type": "expenses",
+            "time_period": "last_month"
+        }
+    },
+    {
+        "intent": "advice",
+        "confidence": 0.85,
+        "reasoning": "User wants budgeting advice",
+        "params": {
+            "user_query": "budgeting advice"
+        }
+    }
+]
 }
+
+**MULTI-INTENT RULES:**
+- Only use multiple_intents array if you detect 2+ distinct intents
+- Each intent must have confidence >= 0.5
+- Extract parameters for each intent separately in the "params" field
+- Set clarification_needed=true if ANY intent needs clarification
+- Single intent uses existing format (no array)
 
 **IMPORTANT DATA TYPE RULES:**
 - ALL array fields must be arrays, not strings: ["category"] not "category"
-- group_by must be an array: ["category", "date"] not "category"
-- category_filter must be an array: ["groceries", "dining"] not "groceries"
-- account_types must be an array: ["checking", "savings"] not "checking"
-- missing_params must be an array: ["amount", "account"] not "amount"
 - Only include the params object for the matched intent type
 - Set null for unused param objects
 
 Set confidence based on clarity: 0.8-1.0 (high), 0.5-0.79 (medium), 0.0-0.49 (low).
-Set clarification_needed=true if confidence < 0.7 or critical parameters are missing."""
+Set clarification_needed=true if confidence < 0.7 or critical parameters are missing.
+
+Return only valid JSON. Do not include any text outside the JSON."""
 
             # Build user prompt
             user_prompt = f"""Classify this user request:
@@ -184,38 +205,15 @@ Respond with valid JSON containing intent classification and extracted parameter
     def _parse_llm_result(self, llm_result: Dict[str, Any], user_input: str) -> IntentClassificationResult:
         """
         Parse LLM result into structured IntentClassificationResult.
+        Handles both single and multiple intent responses.
         """
         try:
-            # Extract intent-specific parameters
-            data_fetch_params = None
-            aggregate_params = None
-            action_params = None
-            
-            if llm_result.get("intent") == IntentCategory.READ and llm_result.get("read_params"):
-                data_fetch_params = ReadParams(**llm_result["read_params"])
-            
-            elif llm_result.get("intent") == IntentCategory.DATABASE_OPERATIONS and llm_result.get("database_operations_params"):
-                action_params = DatabaseOperationsParams(**llm_result["database_operations_params"])
-            
-            elif llm_result.get("intent") == IntentCategory.ADVICE and llm_result.get("advice_params"):
-                action_params = AdviceParams(**llm_result["advice_params"])
-            
-            # Create and validate result
-            result = IntentClassificationResult(
-                intent=llm_result["intent"],
-                confidence=llm_result["confidence"],
-                reasoning=llm_result.get("reasoning", "Intent classified by OpenAI"),
-                data_fetch_params=data_fetch_params,
-                aggregate_params=aggregate_params,
-                action_params=action_params,
-                missing_params=llm_result.get("missing_params", []),
-                clarification_needed=llm_result.get("clarification_needed", False),
-                user_input_analysis=llm_result.get("user_input_analysis", f"Analysis of: '{user_input[:50]}...'")
-            )
-            
-            logger.debug(f"Successfully parsed LLM result: {result.intent} (params: {len(result.extracted_parameters)})")
-            return result
-            
+            # Check for multiple intents
+            if "multiple_intents" in llm_result:
+                return self._parse_multiple_intents(llm_result, user_input)
+            else:
+                return self._parse_single_intent(llm_result, user_input)
+                
         except Exception as e:
             logger.error(f"Failed to parse LLM result: {e}")
             raise IntentClassificationError(
@@ -223,6 +221,84 @@ Respond with valid JSON containing intent classification and extracted parameter
                 error_type="parsing_error",
                 user_input=user_input
             )
+    
+    def _parse_multiple_intents(self, llm_result: Dict[str, Any], user_input: str) -> IntentClassificationResult:
+        """Parse multiple intents from LLM response."""
+        multiple_intents = []
+        
+        for intent_data in llm_result["multiple_intents"]:
+            intent_entry = IntentEntry(
+                intent=intent_data["intent"],
+                confidence=float(intent_data.get("confidence", 0.0)),
+                reasoning=intent_data.get("reasoning"),
+                params=intent_data.get("params", {})
+            )
+            multiple_intents.append(intent_entry)
+        
+        # Sort by confidence (highest first)
+        multiple_intents.sort(key=lambda x: x.confidence, reverse=True)
+        
+        # Create primary intent result (highest confidence) for backward compatibility
+        primary_intent = multiple_intents[0]
+        
+        # Parse primary intent parameters
+        data_fetch_params = None
+        action_params = None
+        
+        if primary_intent.intent == IntentCategory.READ and primary_intent.params:
+            data_fetch_params = ReadParams(**primary_intent.params)
+        elif primary_intent.intent == IntentCategory.DATABASE_OPERATIONS and primary_intent.params:
+            action_params = DatabaseOperationsParams(**primary_intent.params)
+        elif primary_intent.intent == IntentCategory.ADVICE and primary_intent.params:
+            action_params = AdviceParams(**primary_intent.params)
+        
+        # Create result with primary intent for backward compatibility
+        result = IntentClassificationResult(
+            intent=primary_intent.intent,
+            confidence=primary_intent.confidence,
+            reasoning=primary_intent.reasoning or "Multi-intent classification",
+            read_params=data_fetch_params,
+            database_operations_params=action_params if primary_intent.intent == IntentCategory.DATABASE_OPERATIONS else None,
+            advice_params=action_params if primary_intent.intent == IntentCategory.ADVICE else None,
+            missing_params=[],
+            clarification_needed=any(intent.confidence < 0.7 for intent in multiple_intents),
+            user_input_analysis=f"Multi-intent analysis of: '{user_input[:50]}...'"
+        )
+        
+        # Store multiple intents as dictionaries for state compatibility
+        result.multiple_intents = [intent.model_dump() for intent in multiple_intents]
+        
+        logger.debug(f"Successfully parsed {len(multiple_intents)} intents: {[i.intent for i in multiple_intents]}")
+        return result
+    
+    def _parse_single_intent(self, llm_result: Dict[str, Any], user_input: str) -> IntentClassificationResult:
+        """Parse single intent from LLM response (existing logic)."""
+        # Extract intent-specific parameters
+        data_fetch_params = None
+        action_params = None
+        
+        if llm_result.get("intent") == IntentCategory.READ and llm_result.get("read_params"):
+            data_fetch_params = ReadParams(**llm_result["read_params"])
+        elif llm_result.get("intent") == IntentCategory.DATABASE_OPERATIONS and llm_result.get("database_operations_params"):
+            action_params = DatabaseOperationsParams(**llm_result["database_operations_params"])
+        elif llm_result.get("intent") == IntentCategory.ADVICE and llm_result.get("advice_params"):
+            action_params = AdviceParams(**llm_result["advice_params"])
+        
+        # Create and validate result
+        result = IntentClassificationResult(
+            intent=llm_result["intent"],
+            confidence=llm_result["confidence"],
+            reasoning=llm_result.get("reasoning", "Intent classified by OpenAI"),
+            read_params=data_fetch_params,
+            database_operations_params=action_params if llm_result.get("intent") == IntentCategory.DATABASE_OPERATIONS else None,
+            advice_params=action_params if llm_result.get("intent") == IntentCategory.ADVICE else None,
+            missing_params=llm_result.get("missing_params", []),
+            clarification_needed=llm_result.get("clarification_needed", False),
+            user_input_analysis=llm_result.get("user_input_analysis", f"Analysis of: '{user_input[:50]}...'")
+        )
+        
+        logger.debug(f"Successfully parsed single intent: {result.intent} (params: {len(result.extracted_parameters)})")
+        return result
     
     def _create_fallback_result(self, error: Exception, user_input: str) -> FallbackIntentResult:
         """Create fallback result when classification fails."""
@@ -278,11 +354,23 @@ async def intent_classification_node(state: MainState) -> MainState:
                 conversation_context
             )
             
+            # Check if this is a multi-intent result
+            is_multi_intent = hasattr(classification_result, 'multiple_intents') and classification_result.multiple_intents
+            
+            # Handle extracted_parameters safely for both IntentClassificationResult and FallbackIntentResult
+            extracted_params_count = 0
+            if hasattr(classification_result, 'extracted_parameters'):
+                extracted_params_count = len(classification_result.extracted_parameters)
+            elif hasattr(classification_result, 'missing_params'):
+                extracted_params_count = len(classification_result.missing_params)
+            
             exec_logger.log_step("intent_classification_complete", {
                 "classified_intent": classification_result.intent.value,
                 "confidence": classification_result.confidence,
-                "extracted_params_count": len(classification_result.extracted_parameters),
-                "requires_clarification": classification_result.requires_clarification
+                "extracted_params_count": extracted_params_count,
+                "requires_clarification": getattr(classification_result, 'requires_clarification', getattr(classification_result, 'clarification_needed', False)),
+                "is_multi_intent": is_multi_intent,
+                "intent_count": len(classification_result.multiple_intents) if is_multi_intent else 1
             })
             
             # Convert IntentCategory to IntentType for state compatibility
@@ -302,27 +390,48 @@ async def intent_classification_node(state: MainState) -> MainState:
             state_data.pop('confidence', None)
             state_data.pop('metadata', None)
             state_data.pop('parameters', None)
+            state_data.pop('multiple_intents', None)
+            
+            # Prepare metadata
+            metadata = {
+                **state.metadata,
+                "classification_result": classification_result.model_dump(),
+                "llm_provider": "openai",
+                "is_multi_intent": is_multi_intent
+            }
+            
+            # Add multi-intent specific metadata
+            if is_multi_intent:
+                metadata["intent_count"] = len(classification_result.multiple_intents)
+                metadata["intent_types"] = [intent.intent for intent in classification_result.multiple_intents]
             
             updated_state = MainState(
                 **state_data,
                 intent=intent_mapping[classification_result.intent],
                 confidence=classification_result.confidence,
-                metadata={
-                    **state.metadata,
-                    "classification_result": classification_result.model_dump(),
-                    "llm_provider": "openai"
-                },
+                metadata=metadata,
                 parameters=classification_result.extracted_parameters,
+                multiple_intents=classification_result.multiple_intents if is_multi_intent else None,
             )
             
             exec_logger.log_step("response_message_generation")
             
             # Add assistant message with classification result
-            response_message = (
-                f"I've analyzed your request using OpenAI: '{state.user_input}'. "
-                f"I've classified it as a {classification_result.intent.value} intent "
-                f"with {classification_result.confidence:.0%} confidence."
-            )
+            if is_multi_intent:
+                intent_types = [intent.intent for intent in classification_result.multiple_intents]
+                response_message = (
+                    f"I've analyzed your request using OpenAI: '{state.user_input}'. "
+                    f"I've detected {len(classification_result.multiple_intents)} intents: "
+                    f"{', '.join(intent_types)}. "
+                    f"Primary intent is {classification_result.intent.value} "
+                    f"with {classification_result.confidence:.0%} confidence."
+                )
+            else:
+                response_message = (
+                    f"I've analyzed your request using OpenAI: '{state.user_input}'. "
+                    f"I've classified it as a {classification_result.intent.value} intent "
+                    f"with {classification_result.confidence:.0%} confidence."
+                )
             
             if classification_result.extracted_parameters:
                 response_message += f" I've extracted {len(classification_result.extracted_parameters)} parameters."

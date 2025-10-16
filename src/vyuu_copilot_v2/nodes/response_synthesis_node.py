@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from ..schemas.state_schemas import OrchestratorState, MessageManager
-from ..schemas.generated_intent_schemas import IntentCategory
+from ..schemas.generated_intent_schemas import IntentCategory, IntentEntry
 from ..utils.llm_client import LLMClient
 from ..utils.data_formatters import DataFormatter
 from ..utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
@@ -564,6 +564,76 @@ Please provide a helpful, conversational response that addresses the user's requ
             return f"I've completed your request: '{state.user_input}'. All operations were successful."
 
 
+async def synthesize_multi_intent_response(state: OrchestratorState) -> OrchestratorState:
+    """
+    Synthesize structured response for multiple intents.
+    
+    Args:
+        state: OrchestratorState with multiple intent results
+        
+    Returns:
+        Updated state with structured multi-intent response
+    """
+    results = state.execution_results.get("multiple_intent_results", [])
+    
+    # Group results by intent type
+    intent_responses = {
+        "read": [],
+        "database_operations": [],
+        "advice": []
+    }
+    
+    for result in results:
+        intent_type = result.get("intent", "unknown")
+        if intent_type in intent_responses:
+            intent_responses[intent_type].append(result)
+    
+    # Build structured response
+    response_sections = []
+    
+    # Read results
+    if intent_responses["read"]:
+        response_sections.append("📊 **Data Retrieved:**")
+        for result in intent_responses["read"]:
+            if result.get("success", False):
+                response_sections.append(f"• {result.get('summary', 'Data retrieved successfully')}")
+            else:
+                response_sections.append(f"• ❌ {result.get('error', 'Failed to retrieve data')}")
+    
+    # Database operations results  
+    if intent_responses["database_operations"]:
+        response_sections.append("\n💾 **Database Operations:**")
+        for result in intent_responses["database_operations"]:
+            if result.get("success", False):
+                response_sections.append(f"• {result.get('summary', 'Operation completed successfully')}")
+            else:
+                response_sections.append(f"• ❌ {result.get('error', 'Operation failed')}")
+    
+    # Advice results
+    if intent_responses["advice"]:
+        response_sections.append("\n💡 **Financial Advice:**")
+        for result in intent_responses["advice"]:
+            if result.get("success", False):
+                response_sections.append(f"• {result.get('summary', 'Advice provided successfully')}")
+            else:
+                response_sections.append(f"• ❌ {result.get('error', 'Failed to provide advice')}")
+    
+    # Add summary if we have mixed results
+    successful_count = state.execution_results.get("successful_count", 0)
+    failed_count = state.execution_results.get("failed_count", 0)
+    
+    if successful_count > 0 and failed_count > 0:
+        response_sections.insert(0, f"I've processed your request with {successful_count + failed_count} actions. Here's what happened:\n")
+    elif successful_count > 0:
+        response_sections.insert(0, f"✅ I've successfully completed all {successful_count} requested actions:\n")
+    elif failed_count > 0:
+        response_sections.insert(0, f"❌ I encountered issues with all {failed_count} requested actions:\n")
+    
+    final_response = "\n".join(response_sections)
+    
+    return state.model_copy(update={"final_response": final_response})
+
+
 async def response_synthesis_node(state: OrchestratorState) -> OrchestratorState:
     """
     Generate natural language response from tool execution results.
@@ -578,6 +648,39 @@ async def response_synthesis_node(state: OrchestratorState) -> OrchestratorState
     
     async with track_node_execution(node_name, state.session_id) as exec_logger:
         try:
+            # Check for multiple intents first
+            if state.has_multiple_intents:
+                exec_logger.log_step("multi_intent_response_synthesis_start", {
+                    "intent_count": len(state.multiple_intents),
+                    "intent_types": [intent.intent for intent in state.multiple_intents]
+                })
+                
+                # Add system message for tracking
+                state = MessageManager.add_system_message(
+                    state,
+                    f"Starting multi-intent response synthesis for {len(state.multiple_intents)} intents",
+                    node_name,
+                )
+                
+                # Synthesize multi-intent response
+                result_state = await synthesize_multi_intent_response(state)
+                
+                exec_logger.log_step("multi_intent_response_synthesis_complete", {
+                    "response_length": len(result_state.final_response or ""),
+                    "successful_count": result_state.execution_results.get("successful_count", 0),
+                    "failed_count": result_state.execution_results.get("failed_count", 0)
+                })
+                
+                # Add execution metrics to state
+                execution_metrics = exec_logger.end(success=True, metadata={
+                    "synthesis_type": "multi_intent",
+                    "intent_count": len(state.multiple_intents),
+                    "response_length": len(result_state.final_response or "")
+                })
+                
+                return add_execution_metrics_to_state(result_state, execution_metrics)
+            
+            # Single intent response synthesis (existing logic)
             exec_logger.log_step("node_start", {
                 "intent": state.intent.value if state.intent else "unknown",
                 "tool_results_exists": bool(state.tool_results),

@@ -29,6 +29,21 @@ class ConfidenceLevel(str, Enum):
     LOW = "low"        # 0.0 - 0.49
 
 
+class IntentEntry(BaseModel):
+    """Lightweight DTO for individual intent in multi-intent scenarios."""
+    intent: str = Field(..., description="Intent category")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
+    reasoning: Optional[str] = Field(None, description="Brief explanation")
+    params: Optional[Dict[str, Any]] = Field(None, description="Intent-specific parameters")
+    
+    @field_validator('confidence')
+    @classmethod
+    def validate_confidence(cls, v):
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("Confidence must be between 0.0 and 1.0")
+        return v
+
+
 class ReadParams(BaseModel):
     """
     Retrieve and display financial data from various entity types

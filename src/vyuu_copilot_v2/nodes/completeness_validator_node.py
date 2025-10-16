@@ -312,7 +312,7 @@ class CompletenessValidator:
         return True
 
 
-async def completeness_validator_node(state: ClarificationState) -> ValidationResult:
+async def completeness_validator_node(state: ClarificationState) -> ClarificationState:
     """
     Validate parameter completeness and determine clarification flow.
     
@@ -327,12 +327,17 @@ async def completeness_validator_node(state: ClarificationState) -> ValidationRe
         state: Current ClarificationState
         
     Returns:
-        Tuple of (status, updated_state) where status is:
-        - "complete": All critical parameters collected, proceed to orchestrator
-        - "incomplete": Missing parameters, continue clarification loop
-        - "max_attempts_reached": Hit max attempts, exit with partial data
+        Updated ClarificationState with validation results in metadata
     """
     logger.info(f"[CompletenessValidator] Starting validation for session {state.session_id[:8]}")
     
     validator = CompletenessValidator()
-    return validator.validate_completeness(state) 
+    validation_result = validator.validate_completeness(state)
+    
+    # Extract the updated state from the validation result tuple
+    if isinstance(validation_result, tuple) and len(validation_result) == 2:
+        status, updated_state = validation_result
+        return updated_state
+    else:
+        # Fallback if validation_result is not a tuple
+        return state 

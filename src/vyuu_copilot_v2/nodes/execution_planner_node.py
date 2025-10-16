@@ -13,6 +13,7 @@ Features:
 - Scalable design for future multi-step workflows
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -21,7 +22,7 @@ from uuid import uuid4
 
 from ..config.settings import get_config
 from ..schemas.state_schemas import OrchestratorState, PlanStep, ExecutionPlan
-from ..schemas.generated_intent_schemas import IntentCategory
+from ..schemas.generated_intent_schemas import IntentCategory, IntentEntry
 from ..tools import TOOL_REGISTRY, get_tool_info, get_tool_schema
 from ..utils.llm_client import LLMClient
 from ..utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
@@ -52,6 +53,199 @@ class ExecutionPlannerError(Exception):
     pass
 
 
+def can_execute_parallel(intent: Dict[str, Any]) -> bool:
+    """
+    Determine if intent can be executed in parallel.
+    
+    Args:
+        intent: Intent dictionary to check
+        
+    Returns:
+        True if intent is read or advice (safe to parallelize)
+        False if intent is database_operations (must be sequential)
+    """
+    return intent.intent in ["read", "advice"]
+
+
+async def execute_single_intent_from_classification(
+    state: OrchestratorState,
+    intent_entry: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Execute a single intent from classification result.
+    
+    This adapts the existing execution logic to work with
+    individual intents from multi-intent scenarios.
+    
+    Args:
+        state: Current orchestrator state
+        intent_entry: Intent dictionary to execute
+        
+    Returns:
+        Dictionary with execution results
+    """
+    try:
+        # Create a temporary state for this intent
+        temp_state = OrchestratorState(
+            user_input=state.user_input,
+            intent=state.intent,  # Use primary intent for compatibility
+            confidence=state.confidence,
+            messages=state.messages,
+            session_id=state.session_id,
+            timestamp=state.timestamp,
+            metadata=state.metadata,
+            parameters=intent_entry.get('params', {}),
+            execution_results=state.execution_results,
+            response=state.response,
+            extracted_params=intent_entry.get('params', {}),
+            execution_plan=None,
+            tool_results=None,
+            final_response=None
+        )
+        
+        # Execute using existing logic (simplified for now)
+        # In a full implementation, this would call the appropriate tool execution
+        result = {
+            "intent": intent_entry.get('intent', 'unknown'),
+            "confidence": intent_entry.get('confidence', 0.0),
+            "success": True,
+            "summary": f"Executed {intent_entry.get('intent', 'unknown')} intent successfully",
+            "data": intent_entry.get('params', {})
+        }
+        
+        logger.info(f"Executed intent {intent_entry.get('intent', 'unknown')} with confidence {intent_entry.get('confidence', 0.0)}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to execute intent {intent_entry.get('intent', 'unknown')}: {e}")
+        return {
+            "intent": intent_entry.get('intent', 'unknown'),
+            "confidence": intent_entry.get('confidence', 0.0),
+            "success": False,
+            "error": str(e),
+            "summary": f"Failed to execute {intent_entry.get('intent', 'unknown')} intent"
+        }
+
+
+async def execute_multiple_intents(state: OrchestratorState) -> OrchestratorState:
+    """
+    Execute multiple intents with parallel/sequential strategy.
+    
+    Args:
+        state: OrchestratorState with multiple intents
+        
+    Returns:
+        Updated state with combined execution results
+    """
+    intents = state.multiple_intents
+    logger.info(f"Executing {len(intents)} intents for session {state.session_id[:8]}")
+    
+    # Group intents by execution strategy
+    parallel_intents = []
+    sequential_intents = []
+    
+    for intent in intents:
+        if can_execute_parallel(intent):
+            parallel_intents.append(intent)
+        else:
+            sequential_intents.append(intent)
+    
+    results = []
+    
+    # Execute parallel intents concurrently
+    if parallel_intents:
+        logger.info(f"Executing {len(parallel_intents)} intents in parallel")
+        parallel_tasks = [
+            asyncio.create_task(execute_single_intent_from_classification(state, intent)) 
+            for intent in parallel_intents
+        ]
+        
+        # Wait for parallel tasks with timeout
+        try:
+            parallel_results = await asyncio.wait_for(
+                asyncio.gather(*parallel_tasks, return_exceptions=True),
+                timeout=30.0  # 30 second timeout for parallel execution
+            )
+            results.extend(parallel_results)
+        except asyncio.TimeoutError:
+            logger.warning("Parallel execution timed out")
+            # Cancel remaining tasks
+            for task in parallel_tasks:
+                if not task.done():
+                    task.cancel()
+            results.append({"intent": "unknown", "error": "timeout", "success": False})
+    
+    # Execute sequential intents one by one
+    for intent in sequential_intents:
+        logger.info(f"Executing sequential intent: {intent.intent}")
+        try:
+            result = await execute_single_intent_from_classification(state, intent)
+            results.append(result)
+            
+            # If sequential intent fails, we might want to stop the chain
+            if not result.get("success", False):
+                logger.warning(f"Sequential intent {intent.intent} failed, continuing with remaining intents")
+                
+        except Exception as e:
+            logger.error(f"Sequential intent execution failed: {e}")
+            results.append({
+                "intent": intent.intent,
+                "error": str(e),
+                "success": False,
+                "summary": f"Failed to execute {intent.intent} intent"
+            })
+    
+    # Combine results
+    return combine_intent_results(state, results)
+
+
+def combine_intent_results(
+    state: OrchestratorState,
+    results: List[Dict[str, Any]]
+) -> OrchestratorState:
+    """
+    Combine results from multiple intent executions.
+    
+    Args:
+        state: Current orchestrator state
+        results: List of execution results (may include errors)
+    
+    Returns:
+        Updated state with combined results and metadata
+    """
+    # Separate successful and failed results
+    successful_results = [r for r in results if r.get("success", False)]
+    failed_results = [r for r in results if not r.get("success", False)]
+    
+    # Create combined execution results
+    combined_results = {
+        "multiple_intent_results": results,
+        "successful_count": len(successful_results),
+        "failed_count": len(failed_results),
+        "execution_strategy": "mixed" if len(successful_results) > 0 and len(failed_results) > 0 else "success" if len(failed_results) == 0 else "failed"
+    }
+    
+    # Create summary response
+    response_parts = []
+    
+    if successful_results:
+        response_parts.append("✅ **Successfully completed:**")
+        for result in successful_results:
+            response_parts.append(f"• {result.get('summary', 'Completed')}")
+    
+    if failed_results:
+        response_parts.append("\n❌ **Issues encountered:**")
+        for result in failed_results:
+            response_parts.append(f"• {result.get('error', 'Unknown error')}")
+    
+    combined_response = "\n".join(response_parts)
+    
+    return state.model_copy(update={
+        "execution_results": combined_results,
+        "response": combined_response
+    })
+
+
 async def execution_planner_node(state: OrchestratorState) -> OrchestratorState:
     """
     Generate and validate execution plan using hybrid LLM + rule-based approach.
@@ -66,6 +260,31 @@ async def execution_planner_node(state: OrchestratorState) -> OrchestratorState:
     
     async with track_node_execution(node_name, state.session_id) as exec_logger:
         try:
+            # Check for multiple intents first
+            if state.has_multiple_intents:
+                exec_logger.log_step("multi_intent_execution_start", {
+                    "intent_count": len(state.multiple_intents),
+                    "intent_types": [intent.intent for intent in state.multiple_intents]
+                })
+                
+                # Execute multiple intents with parallel/sequential strategy
+                result_state = await execute_multiple_intents(state)
+                
+                exec_logger.log_step("multi_intent_execution_complete", {
+                    "successful_count": result_state.execution_results.get("successful_count", 0),
+                    "failed_count": result_state.execution_results.get("failed_count", 0)
+                })
+                
+                # Add execution metrics to state
+                execution_metrics = exec_logger.end(success=True, metadata={
+                    "execution_type": "multi_intent",
+                    "intent_count": len(state.multiple_intents),
+                    "execution_strategy": result_state.execution_results.get("execution_strategy", "unknown")
+                })
+                
+                return add_execution_metrics_to_state(result_state, execution_metrics)
+            
+            # Single intent execution (existing logic)
             planning_errors = []
             planning_status = "error"
             

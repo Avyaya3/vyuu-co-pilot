@@ -183,6 +183,7 @@ class MainState(BaseState):
     - Flexible parameter structure for different intent types
     - Execution results tracking
     - Final response management
+    - Multi-intent support with backward compatibility
     """
     
     parameters: Dict[str, Any] = Field(
@@ -197,6 +198,47 @@ class MainState(BaseState):
         None,
         description="Final user-facing response"
     )
+    multiple_intents: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="List of classified intents when multiple intents detected"
+    )
+    
+    @property
+    def has_multiple_intents(self) -> bool:
+        """Check if this state contains multiple intents."""
+        return self.multiple_intents is not None and len(self.multiple_intents) > 1
+    
+    @property
+    def primary_intent(self) -> Optional[IntentType]:
+        """Get primary intent (highest confidence) for backward compatibility."""
+        if self.has_multiple_intents:
+            sorted_intents = sorted(
+                self.multiple_intents, 
+                key=lambda x: x.get('confidence', 0.0), 
+                reverse=True
+            )
+            # Convert string intent to IntentType enum
+            intent_mapping = {
+                "read": IntentType.READ,
+                "database_operations": IntentType.DATABASE_OPERATIONS,
+                "advice": IntentType.ADVICE,
+                "unknown": IntentType.UNKNOWN,
+                "clarification": IntentType.CLARIFICATION,
+            }
+            return intent_mapping.get(sorted_intents[0].get('intent', 'unknown'), IntentType.UNKNOWN)
+        return self.intent
+    
+    @property
+    def primary_confidence(self) -> Optional[float]:
+        """Get primary intent confidence for backward compatibility."""
+        if self.has_multiple_intents:
+            sorted_intents = sorted(
+                self.multiple_intents, 
+                key=lambda x: x.get('confidence', 0.0), 
+                reverse=True
+            )
+            return sorted_intents[0].get('confidence', 0.0)
+        return self.confidence
 
 
 # Clarification State Schema

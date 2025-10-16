@@ -13,7 +13,7 @@ from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from vyuu_copilot_v2.schemas.state_schemas import MainState, MessageManager, IntentType
-from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory, ConfidenceLevel
+from vyuu_copilot_v2.schemas.generated_intent_schemas import IntentCategory, ConfidenceLevel, IntentEntry
 from vyuu_copilot_v2.utils.parameter_config import get_parameter_config
 from vyuu_copilot_v2.utils.node_execution_logger import track_node_execution, add_execution_metrics_to_state
 
@@ -168,6 +168,54 @@ class DecisionRouter:
         logger.info(f"Decision router initialized with config: {self.config.model_dump()}")
         logger.info(f"Parameter configuration loaded with intents: {self.param_config.get_available_intents()}")
     
+    def route_multiple_intents(self, multiple_intents: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Route multiple intents based on combined analysis.
+        
+        Args:
+            multiple_intents: List of intent dictionaries
+            
+        Returns:
+            Dictionary with routing decision and reasoning
+        """
+        # Analyze all intents
+        total_confidence = sum(intent.get('confidence', 0.0) for intent in multiple_intents) / len(multiple_intents)
+        any_needs_clarification = any(intent.get('confidence', 0.0) < 0.7 for intent in multiple_intents)
+        any_unknown = any(intent.get('intent', '') == "unknown" for intent in multiple_intents)
+        
+        # Check intent-specific confidence thresholds
+        low_confidence_intents = []
+        for intent in multiple_intents:
+            intent_type = intent.get('intent', '')
+            intent_threshold = self.config.intent_specific_thresholds.get(intent_type, 0.5)
+            if intent.get('confidence', 0.0) < intent_threshold:
+                low_confidence_intents.append(intent)
+        
+        # Multi-intent routing logic
+        if any_unknown:
+            return {
+                "decision": "clarification",
+                "reason": RoutingReason.UNKNOWN_INTENT,
+                "explanation": "One or more intents are unknown and require clarification.",
+                "threshold_used": "multi_intent_unknown_rule"
+            }
+        
+        if any_needs_clarification or low_confidence_intents:
+            return {
+                "decision": "clarification", 
+                "reason": RoutingReason.LOW_CONFIDENCE,
+                "explanation": f"Some intents have low confidence and need clarification. Low confidence intents: {[i.get('intent', 'unknown') for i in low_confidence_intents]}",
+                "threshold_used": "multi_intent_low_confidence_rule"
+            }
+        
+        # All intents are clear and complete
+        return {
+            "decision": "direct_orchestrator",
+            "reason": RoutingReason.HIGH_CONFIDENCE_COMPLETE,
+            "explanation": f"All {len(multiple_intents)} intents are clear and ready for execution.",
+            "threshold_used": "multi_intent_high_confidence_rule"
+        }
+    
     def route_intent(self, state: MainState) -> RoutingResult:
         """
         Route intent based on classification results and parameter completeness.
@@ -181,27 +229,47 @@ class DecisionRouter:
         start_time = datetime.now(timezone.utc)
         
         try:
-            # Extract routing inputs
-            intent = state.intent
-            confidence = state.confidence or 0.0
-            parameters = state.parameters or {}
-            
-            # Determine confidence level
-            confidence_level = self._get_confidence_level(confidence)
-            
-            # Analyze parameter completeness
-            param_analysis = self._analyze_parameter_completeness(state)
-            
-            # Apply routing logic
-            routing_decision = self._apply_routing_logic(
-                intent=intent,
-                confidence=confidence,
-                confidence_level=confidence_level,
-                param_analysis=param_analysis
-            )
+            # Check for multiple intents first
+            if state.has_multiple_intents:
+                routing_decision = self.route_multiple_intents(state.multiple_intents)
+                confidence = state.primary_confidence or 0.0
+                intent = state.primary_intent or IntentType.UNKNOWN
+            else:
+                # Extract routing inputs for single intent
+                intent = state.intent
+                confidence = state.confidence or 0.0
+                parameters = state.parameters or {}
+                
+                # Determine confidence level
+                confidence_level = self._get_confidence_level(confidence)
+                
+                # Analyze parameter completeness
+                param_analysis = self._analyze_parameter_completeness(state)
+                
+                # Apply routing logic
+                routing_decision = self._apply_routing_logic(
+                    intent=intent,
+                    confidence=confidence,
+                    confidence_level=confidence_level,
+                    param_analysis=param_analysis
+                )
             
             # Calculate processing time
             processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+            
+            # Determine confidence level and parameter analysis based on routing type
+            if state.has_multiple_intents:
+                confidence_level = self._get_confidence_level(confidence)
+                # For multi-intent, we don't do detailed parameter analysis here
+                # The clarification subgraph will handle parameter extraction for each intent
+                parameters_complete = not any(intent.get('confidence', 0.0) < 0.7 for intent in state.multiple_intents)
+                missing_params = []
+                critical_params_missing = []
+            else:
+                confidence_level = self._get_confidence_level(confidence)
+                parameters_complete = param_analysis["complete"]
+                missing_params = param_analysis["missing"]
+                critical_params_missing = param_analysis["critical_missing"]
             
             # Create routing result
             result = RoutingResult(
@@ -209,16 +277,17 @@ class DecisionRouter:
                 reason=routing_decision["reason"],
                 confidence_score=confidence,
                 confidence_level=confidence_level,
-                parameters_complete=param_analysis["complete"],
-                missing_params=param_analysis["missing"],
-                critical_params_missing=param_analysis["critical_missing"],
+                parameters_complete=parameters_complete,
+                missing_params=missing_params,
+                critical_params_missing=critical_params_missing,
                 intent_type=intent,
                 routing_explanation=routing_decision["explanation"],
                 processing_time_ms=processing_time,
                 config_applied={
                     "threshold_used": routing_decision["threshold_used"],
                     "require_critical_params": self.config.require_critical_params,
-                    "max_missing_params": self.config.max_missing_params
+                    "max_missing_params": self.config.max_missing_params,
+                    "is_multi_intent": state.has_multiple_intents
                 }
             )
             
