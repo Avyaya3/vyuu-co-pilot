@@ -42,7 +42,12 @@ RESPONSE GUIDELINES:
 INTENT_GUIDELINES = {
     IntentCategory.READ: "Focus on presenting data clearly and informatively. Highlight key information and make it easy to understand.",
     IntentCategory.DATABASE_OPERATIONS: "Focus on confirming actions and providing next steps. Be clear about what was done and any follow-up needed.",
-    IntentCategory.ADVICE: "Focus on providing personalized, actionable financial advice. Be specific and practical in recommendations."
+    IntentCategory.ADVICE: """Focus on presenting advice with mathematical transparency. Present all three risk levels clearly with their calculations. Structure the response to show:
+1. Each risk level recommendation
+2. Mathematical calculations and assumptions
+3. Expected outcomes
+
+Make calculations easy to understand and verify."""
 }
 
 
@@ -287,53 +292,41 @@ Please confirm what was done and provide any relevant next steps."""
         self, state: OrchestratorState, processed_data: Dict[str, Any]
     ) -> str:
         """
-        Generate response for action intents.
+        Generate response for advice intents.
 
         Args:
             state: Current orchestrator state
             processed_data: Processed tool results
 
         Returns:
-            Generated response for action intent
+            Generated response for advice intent
         """
         # Check if any steps failed
         if processed_data.get("failed_steps", []):
             return self._generate_action_error_response(processed_data)
 
         try:
-            # Get intent-specific guidelines
-            intent_guidelines = INTENT_GUIDELINES.get(state.intent, "")
+            # For advice, we want to return the raw advice data directly
+            # instead of generating a confirmation response
+            aggregated_data = processed_data.get("aggregated_data", {})
             
-            # Create system prompt
-            system_prompt = BASE_SYSTEM_PROMPT.format(
-                intent_specific_guidelines=intent_guidelines
-            )
-
-            # Format data for LLM
-            formatted_data = self.formatter.format_data_for_llm(
-                processed_data["aggregated_data"]
-            )
-
-            # Create user prompt
-            user_prompt = f"""Generate a confirmation response for this action request:
-
-User Request: {state.user_input}
-
-Action Results:
-{formatted_data}
-
-Please confirm what was done and provide any relevant next steps."""
-
-            # Generate response using LLM
-            response = await self.llm_client.generate_response(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt
-            )
-
-            return response
+            # Look for advice data in the aggregated results
+            if "advice" in aggregated_data:
+                advice_data = aggregated_data["advice"]
+                if isinstance(advice_data, dict) and "advice" in advice_data:
+                    # Return the raw advice text with calculations
+                    return advice_data["advice"]
+                elif isinstance(advice_data, str):
+                    # Return the advice string directly
+                    return advice_data
+            
+            # Fallback: format the data nicely if no direct advice found
+            formatted_data = self.formatter.format_data_for_llm(aggregated_data)
+            return f"Here's your financial advice:\n\n{formatted_data}"
 
         except Exception as e:
-            logger.error(f"LLM-based action response generation failed: {e}")
+            logger.error(f"Advice response generation failed: {e}")
+            # Fallback to template response
             return self._generate_template_action_response(processed_data)
 
     async def _generate_generic_response(

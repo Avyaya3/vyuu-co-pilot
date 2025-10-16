@@ -49,10 +49,10 @@ class LLMClient:
             "timeout": 15
         },
         "advice_generation": {
-            "model": "gpt-3.5-turbo",  # Faster for advice
+            "model": "gpt-4o",  # Upgrade to GPT-4 for better calculation reasoning
             "temperature": 0.3,
-            "max_tokens": 600,
-            "timeout": 20
+            "max_tokens": 2000,  # Increase from 600 to accommodate three levels + calculations
+            "timeout": 30  # Increase from 20 to handle longer processing
         },
         "response_synthesis": {
             "model": "gpt-3.5-turbo",  # Faster for synthesis

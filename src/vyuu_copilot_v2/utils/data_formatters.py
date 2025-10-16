@@ -361,7 +361,15 @@ class DataFormatter:
         # Handle any other data types
         for key, value in data.items():
             if key not in ["balances", "balance", "transactions", "accounts", "spending_analysis", "monthly_summary"]:
-                if isinstance(value, dict):
+                if key == "advice":
+                    # Special handling for advice data - preserve the full text
+                    if isinstance(value, dict) and "advice" in value:
+                        formatted_parts.append(value["advice"])
+                    elif isinstance(value, str):
+                        formatted_parts.append(value)
+                    else:
+                        formatted_parts.append(f"**{key.title()}:** {value}")
+                elif isinstance(value, dict):
                     formatted_parts.append(f"**{key.title()}:**")
                     for sub_key, sub_value in value.items():
                         if isinstance(sub_value, (int, float)):

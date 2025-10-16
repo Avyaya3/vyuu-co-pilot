@@ -111,23 +111,42 @@ class AdviceTool(ToolInterface):
         )
         
         return {
-            "advice": advice_response,
+            "advice": advice_response,  # Full response with all three levels
             "user_query": params.user_query,
-            "context_used": bool(params.context_data),
-            "user_id": params.user_id
+            "context_used": bool(params.context_data or params.financial_data),
+            "user_id": params.user_id,
+            "risk_levels": ["high", "medium", "low"],
+            "has_calculations": True
         }
     
     def _build_system_prompt(self) -> str:
-        """Build an optimized, concise system prompt for financial advice."""
-        return """You are a financial advisor. Provide concise, actionable advice in 3-5 bullet points.
+        """Build an optimized system prompt for three-level risk advice."""
+        return """You are a financial advisor. Provide THREE separate advice recommendations based on different risk levels.
 
-Guidelines:
-- Be specific and actionable
-- Use the user's financial data when available
-- Prioritize security and realistic goals
-- Keep advice practical and implementable
+For each risk level (HIGH RISK, MEDIUM RISK, LOW RISK):
+1. Provide 3-5 specific, actionable recommendations
+2. Include detailed mathematical calculations showing:
+   - Step-by-step breakdown of the calculation
+   - Key assumptions and formulas used
+   - Expected outcomes with numbers
+3. Use ₹ for amounts and show percentage calculations
 
-Focus on: budgeting, savings, investments, debt management, and financial planning."""
+CRITICAL: You MUST show the mathematical calculations that lead to the expected outcome. Do not just state the final number - show the working.
+
+Example format:
+Calculations:
+- Investment Amount: ₹50,000
+- Expected Return Rate: 12% per annum
+- Time Period: 1 year
+- Calculation: ₹50,000 × (1 + 0.12) = ₹50,000 × 1.12 = ₹56,000
+- Expected Outcome: ₹56,000
+
+Let the advice strategy vary based on the user's question and their risk tolerance. Consider:
+- High Risk: More aggressive growth strategies, higher equity allocation
+- Medium Risk: Balanced approach, mix of equity and debt
+- Low Risk: Conservative strategies, capital preservation focus
+
+Format each risk level clearly with calculations."""
     
     def _build_user_prompt(self, params: AdviceParams) -> str:
         """Build the user prompt with query and context."""
@@ -193,14 +212,61 @@ Focus on: budgeting, savings, investments, debt management, and financial planni
                 prompt_parts.append("")
             
             prompt_parts.append("=" * 50)
+            
+            # Add calculation-ready summary
+            prompt_parts.append("\n**Key Metrics for Calculations:**")
+            
+            # Calculate disposable income if possible
+            user = financial_data.get('user', {})
+            monthly_income = user.get('monthly_income', 0)
+            monthly_expenses = user.get('monthly_expenses', 0)
+            disposable_income = monthly_income - monthly_expenses
+            
+            metrics = financial_data.get('dashboardMetrics', {})
+            net_worth = metrics.get('netWorth', 0)
+            
+            prompt_parts.append(f"- Monthly Disposable Income: ₹{disposable_income:,}")
+            prompt_parts.append(f"- Current Net Worth: ₹{net_worth:,}")
+            prompt_parts.append(f"- Current Savings Rate: {metrics.get('savingsRate', 0)*100:.1f}%")
+            
+            # Add user risk profile if available
+            risk_profile = user.get('risk_profile', 'moderate')
+            prompt_parts.append(f"- User's Risk Profile: {risk_profile}")
+            prompt_parts.append("")
+            
         elif params.context_data:
             prompt_parts.append(f"\nFinancial Context:\n{params.context_data}")
         else:
             prompt_parts.append("\nNote: No specific financial data context was provided.")
         
-        # Add request for concise advice
+        # Add request for three-level advice with calculations
         prompt_parts.append("""
-Provide specific, actionable financial advice in 3-5 bullet points. Use their financial data and provide concrete next steps.""")
+Provide THREE separate advice recommendations for the user's question, one for each risk level:
+
+1. HIGH RISK Strategy
+   - Recommendations (3-5 bullet points)
+   - Mathematical Calculations:
+     * Show step-by-step calculation with formulas
+     * Include all working (e.g., ₹50,000 × 1.12 = ₹56,000)
+     * Show expected returns/outcomes with full calculation breakdown
+   
+2. MEDIUM RISK Strategy
+   - Recommendations (3-5 bullet points)
+   - Mathematical Calculations:
+     * Show step-by-step calculation with formulas
+     * Include all working
+     * Show expected returns/outcomes with full calculation breakdown
+
+3. LOW RISK Strategy
+   - Recommendations (3-5 bullet points)
+   - Mathematical Calculations:
+     * Show step-by-step calculation with formulas
+     * Include all working
+     * Show expected returns/outcomes with full calculation breakdown
+
+IMPORTANT: For each expected outcome, you MUST show the complete mathematical working. Do not just state the final number - show how you arrived at it.
+
+Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calculations specific and personalized.""")
         
         return "\n".join(prompt_parts)
 
