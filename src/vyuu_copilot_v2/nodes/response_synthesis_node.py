@@ -313,9 +313,16 @@ Please confirm what was done and provide any relevant next steps."""
             # Look for advice data in the aggregated results
             if "advice" in aggregated_data:
                 advice_data = aggregated_data["advice"]
-                if isinstance(advice_data, dict) and "advice" in advice_data:
-                    # Return the raw advice text with calculations
-                    return advice_data["advice"]
+                if isinstance(advice_data, dict):
+                    # Check for new structure with separate advice and calculations
+                    if "advice" in advice_data and "calculations" in advice_data:
+                        # Combine recommendations and calculations for display
+                        recommendations = advice_data["advice"]
+                        calculations = advice_data["calculations"]
+                        return f"{recommendations}\n\n{calculations}"
+                    elif "advice" in advice_data:
+                        # Legacy structure - return the advice text with calculations
+                        return advice_data["advice"]
                 elif isinstance(advice_data, str):
                     # Return the advice string directly
                     return advice_data

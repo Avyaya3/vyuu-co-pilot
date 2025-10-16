@@ -110,8 +110,13 @@ class AdviceTool(ToolInterface):
             user_prompt=user_prompt
         )
         
+        # Parse the advice response to separate recommendations from calculations
+        parsed_advice = self._parse_advice_response(advice_response)
+        
         return {
-            "advice": advice_response,  # Full response with all three levels
+            "advice": parsed_advice["recommendations"],  # Clean recommendations without calculations
+            "calculations": parsed_advice["calculations"],  # Mathematical calculations separately
+            "full_response": advice_response,  # Keep full response for backward compatibility
             "user_query": params.user_query,
             "context_used": bool(params.context_data or params.financial_data),
             "user_id": params.user_id,
@@ -269,6 +274,87 @@ IMPORTANT: For each expected outcome, you MUST show the complete mathematical wo
 Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calculations specific and personalized.""")
         
         return "\n".join(prompt_parts)
+    
+    def _parse_advice_response(self, advice_response: str) -> Dict[str, str]:
+        """
+        Parse the advice response to separate recommendations from calculations.
+        
+        Args:
+            advice_response: Full advice response from LLM
+            
+        Returns:
+            Dictionary with 'recommendations' and 'calculations' keys
+        """
+        try:
+            # Split the response into sections
+            sections = advice_response.split('\n\n')
+            
+            recommendations_parts = []
+            calculations_parts = []
+            
+            current_section = None
+            current_content = []
+            
+            for section in sections:
+                section = section.strip()
+                if not section:
+                    continue
+                    
+                # Check if this is a risk level header
+                if any(risk_level in section.upper() for risk_level in ['HIGH RISK', 'MEDIUM RISK', 'LOW RISK']):
+                    # Save previous section
+                    if current_section and current_content:
+                        if current_section == 'recommendations':
+                            recommendations_parts.extend(current_content)
+                        elif current_section == 'calculations':
+                            calculations_parts.extend(current_content)
+                    
+                    # Start new section
+                    current_section = 'recommendations'
+                    current_content = [section]
+                    
+                elif 'CALCULATIONS:' in section.upper() or 'CALCULATION:' in section.upper():
+                    # Save previous recommendations
+                    if current_section == 'recommendations' and current_content:
+                        recommendations_parts.extend(current_content)
+                    
+                    # Start calculations section
+                    current_section = 'calculations'
+                    current_content = [section]
+                    
+                else:
+                    # Add to current section
+                    if current_content:
+                        current_content.append(section)
+                    else:
+                        # If no section identified yet, assume it's recommendations
+                        if current_section is None:
+                            current_section = 'recommendations'
+                        current_content = [section]
+            
+            # Save the last section
+            if current_section and current_content:
+                if current_section == 'recommendations':
+                    recommendations_parts.extend(current_content)
+                elif current_section == 'calculations':
+                    calculations_parts.extend(current_content)
+            
+            # Join the parts
+            recommendations = '\n\n'.join(recommendations_parts) if recommendations_parts else advice_response
+            calculations = '\n\n'.join(calculations_parts) if calculations_parts else "No separate calculations found"
+            
+            return {
+                "recommendations": recommendations,
+                "calculations": calculations
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to parse advice response: {e}")
+            # Fallback: return the full response as recommendations
+            return {
+                "recommendations": advice_response,
+                "calculations": "Parsing failed - calculations included in recommendations"
+            }
 
 
 # Create tool instance

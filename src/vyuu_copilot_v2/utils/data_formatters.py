@@ -363,8 +363,19 @@ class DataFormatter:
             if key not in ["balances", "balance", "transactions", "accounts", "spending_analysis", "monthly_summary"]:
                 if key == "advice":
                     # Special handling for advice data - preserve the full text
-                    if isinstance(value, dict) and "advice" in value:
-                        formatted_parts.append(value["advice"])
+                    if isinstance(value, dict):
+                        if "advice" in value and "calculations" in value:
+                            # New structure with separate advice and calculations
+                            formatted_parts.append("**Recommendations:**")
+                            formatted_parts.append(value["advice"])
+                            formatted_parts.append("")
+                            formatted_parts.append("**Mathematical Calculations:**")
+                            formatted_parts.append(value["calculations"])
+                        elif "advice" in value:
+                            # Legacy structure
+                            formatted_parts.append(value["advice"])
+                        else:
+                            formatted_parts.append(f"**{key.title()}:** {value}")
                     elif isinstance(value, str):
                         formatted_parts.append(value)
                     else:
