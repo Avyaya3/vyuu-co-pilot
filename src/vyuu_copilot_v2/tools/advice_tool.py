@@ -85,6 +85,34 @@ class AdviceTool(ToolInterface):
                 "execution_time_ms": execution_time
             }
     
+    def _safe_get_number(self, data: Dict[str, Any], key: str, default: float = 0.0) -> float:
+        """Safely get a number from a dictionary, handling None values."""
+        value = data.get(key, default)
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    def _safe_format_currency(self, value: Any, default: float = 0.0) -> str:
+        """Safely format a value as currency."""
+        if value is None:
+            value = default
+        try:
+            return f"₹{float(value):,}"
+        except (ValueError, TypeError):
+            return f"₹{default:,}"
+    
+    def _safe_format_percentage(self, value: Any, default: float = 0.0) -> str:
+        """Safely format a value as percentage."""
+        if value is None:
+            value = default
+        try:
+            return f"{float(value) * 100:.1f}%"
+        except (ValueError, TypeError):
+            return f"{default * 100:.1f}%"
+    
     async def _generate_advice(self, params: AdviceParams) -> Dict[str, Any]:
         """Generate personalized financial advice using LLM."""
         
@@ -176,44 +204,53 @@ Format each risk level clearly with calculations."""
             if 'user' in financial_data:
                 user = financial_data['user']
                 prompt_parts.append(f"**Personal Information:**")
-                prompt_parts.append(f"- Name: {user.get('name', 'N/A')}")
-                prompt_parts.append(f"- Monthly Income: ₹{user.get('monthly_income', 0):,}")
-                prompt_parts.append(f"- Monthly Expenses: ₹{user.get('monthly_expenses', 0):,}")
-                prompt_parts.append(f"- Risk Profile: {user.get('risk_profile', 'N/A')}")
+                prompt_parts.append(f"- Name: {user.get('name') or 'N/A'}")
+                monthly_income = self._safe_get_number(user, 'monthly_income', 0)
+                monthly_expenses = self._safe_get_number(user, 'monthly_expenses', 0)
+                prompt_parts.append(f"- Monthly Income: {self._safe_format_currency(monthly_income)}")
+                prompt_parts.append(f"- Monthly Expenses: {self._safe_format_currency(monthly_expenses)}")
+                prompt_parts.append(f"- Risk Profile: {user.get('risk_profile') or 'N/A'}")
                 prompt_parts.append("")
             
             # Dashboard metrics
             if 'dashboardMetrics' in financial_data:
                 metrics = financial_data['dashboardMetrics']
                 prompt_parts.append(f"**Financial Overview:**")
-                prompt_parts.append(f"- Net Worth: ₹{metrics.get('netWorth', 0):,}")
-                prompt_parts.append(f"- Current Savings Rate: {metrics.get('savingsRate', 0)*100:.1f}%")
-                prompt_parts.append(f"- Total Assets: ₹{metrics.get('totalAssets', 0):,}")
-                prompt_parts.append(f"- Total Liabilities: ₹{metrics.get('totalLiabilities', 0):,}")
+                prompt_parts.append(f"- Net Worth: {self._safe_format_currency(metrics.get('netWorth'))}")
+                prompt_parts.append(f"- Current Savings Rate: {self._safe_format_percentage(metrics.get('savingsRate'))}")
+                prompt_parts.append(f"- Total Assets: {self._safe_format_currency(metrics.get('totalAssets'))}")
+                prompt_parts.append(f"- Total Liabilities: {self._safe_format_currency(metrics.get('totalLiabilities'))}")
                 prompt_parts.append("")
             
             # Assets
             if 'assets' in financial_data and financial_data['assets']:
                 prompt_parts.append(f"**Assets:**")
                 for asset in financial_data['assets']:
-                    prompt_parts.append(f"- {asset.get('name', 'N/A')}: ₹{asset.get('currentValue', 0):,} ({asset.get('category', 'N/A')})")
+                    asset_name = asset.get('name') or 'N/A'
+                    asset_value = self._safe_format_currency(asset.get('currentValue'))
+                    asset_category = asset.get('category') or 'N/A'
+                    prompt_parts.append(f"- {asset_name}: {asset_value} ({asset_category})")
                 prompt_parts.append("")
             
             # Liabilities
             if 'liabilities' in financial_data and financial_data['liabilities']:
                 prompt_parts.append(f"**Liabilities:**")
                 for liability in financial_data['liabilities']:
-                    prompt_parts.append(f"- {liability.get('name', 'N/A')}: ₹{liability.get('amount', 0):,} (EMI: ₹{liability.get('emi', 0):,})")
+                    liability_name = liability.get('name') or 'N/A'
+                    liability_amount = self._safe_format_currency(liability.get('amount'))
+                    liability_emi = self._safe_format_currency(liability.get('emi'))
+                    prompt_parts.append(f"- {liability_name}: {liability_amount} (EMI: {liability_emi})")
                 prompt_parts.append("")
             
             # Goals
             if 'goals' in financial_data and financial_data['goals']:
                 prompt_parts.append(f"**Financial Goals:**")
                 for goal in financial_data['goals']:
-                    current = goal.get('current', 0)
-                    target = goal.get('target', 0)
+                    goal_name = goal.get('name') or 'N/A'
+                    current = self._safe_get_number(goal, 'current', 0)
+                    target = self._safe_get_number(goal, 'target', 0)
                     progress = (current / target * 100) if target > 0 else 0
-                    prompt_parts.append(f"- {goal.get('name', 'N/A')}: ₹{current:,} / ₹{target:,} ({progress:.1f}% complete)")
+                    prompt_parts.append(f"- {goal_name}: {self._safe_format_currency(current)} / {self._safe_format_currency(target)} ({progress:.1f}% complete)")
                 prompt_parts.append("")
             
             prompt_parts.append("=" * 50)
@@ -223,19 +260,19 @@ Format each risk level clearly with calculations."""
             
             # Calculate disposable income if possible
             user = financial_data.get('user', {})
-            monthly_income = user.get('monthly_income', 0)
-            monthly_expenses = user.get('monthly_expenses', 0)
+            monthly_income = self._safe_get_number(user, 'monthly_income', 0)
+            monthly_expenses = self._safe_get_number(user, 'monthly_expenses', 0)
             disposable_income = monthly_income - monthly_expenses
             
             metrics = financial_data.get('dashboardMetrics', {})
-            net_worth = metrics.get('netWorth', 0)
+            net_worth = self._safe_get_number(metrics, 'netWorth', 0)
             
-            prompt_parts.append(f"- Monthly Disposable Income: ₹{disposable_income:,}")
-            prompt_parts.append(f"- Current Net Worth: ₹{net_worth:,}")
-            prompt_parts.append(f"- Current Savings Rate: {metrics.get('savingsRate', 0)*100:.1f}%")
+            prompt_parts.append(f"- Monthly Disposable Income: {self._safe_format_currency(disposable_income)}")
+            prompt_parts.append(f"- Current Net Worth: {self._safe_format_currency(net_worth)}")
+            prompt_parts.append(f"- Current Savings Rate: {self._safe_format_percentage(metrics.get('savingsRate'))}")
             
             # Add user risk profile if available
-            risk_profile = user.get('risk_profile', 'moderate')
+            risk_profile = user.get('risk_profile') or 'moderate'
             prompt_parts.append(f"- User's Risk Profile: {risk_profile}")
             prompt_parts.append("")
             
