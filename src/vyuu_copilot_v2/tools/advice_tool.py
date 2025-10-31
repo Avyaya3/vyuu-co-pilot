@@ -5,6 +5,7 @@ This tool analyzes user queries and financial data context to provide
 personalized financial advice and recommendations.
 """
 
+import re
 import time
 import logging
 from typing import Dict, Any, Optional
@@ -316,81 +317,81 @@ Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calc
         """
         Parse the advice response to separate recommendations from calculations.
         
+        PRESERVES MARKDOWN FORMATTING by using regex-based extraction instead of
+        splitting and stripping, which would break markdown structure.
+        
         Args:
             advice_response: Full advice response from LLM
             
         Returns:
-            Dictionary with 'recommendations' and 'calculations' keys
+            Dictionary with 'recommendations' and 'calculations' keys, both
+            preserving original markdown formatting
         """
         try:
-            # Split the response into sections
-            sections = advice_response.split('\n\n')
+            # Use regex to find calculation sections WITHOUT breaking markdown
+            # Look for various patterns that indicate calculations section
+            calc_patterns = [
+                r'(?i)(\n\s*Mathematical\s+Calculations?:?\s*\n)',
+                r'(?i)(\n\s*Calculations?:?\s*\n)',
+                r'(?i)(\n\s*###?\s*Calculations?\s*\n)',
+            ]
             
-            recommendations_parts = []
-            calculations_parts = []
+            calc_match = None
+            calc_pattern_used = None
             
-            current_section = None
-            current_content = []
+            # Try each pattern to find where calculations section starts
+            for pattern in calc_patterns:
+                match = re.search(pattern, advice_response)
+                if match:
+                    calc_match = match
+                    calc_pattern_used = pattern
+                    break
             
-            for section in sections:
-                section = section.strip()
-                if not section:
-                    continue
-                    
-                # Check if this is a risk level header
-                if any(risk_level in section.upper() for risk_level in ['HIGH RISK', 'MEDIUM RISK', 'LOW RISK']):
-                    # Save previous section
-                    if current_section and current_content:
-                        if current_section == 'recommendations':
-                            recommendations_parts.extend(current_content)
-                        elif current_section == 'calculations':
-                            calculations_parts.extend(current_content)
-                    
-                    # Start new section
-                    current_section = 'recommendations'
-                    current_content = [section]
-                    
-                elif 'CALCULATIONS:' in section.upper() or 'CALCULATION:' in section.upper():
-                    # Save previous recommendations
-                    if current_section == 'recommendations' and current_content:
-                        recommendations_parts.extend(current_content)
-                    
-                    # Start calculations section
-                    current_section = 'calculations'
-                    current_content = [section]
-                    
+            if calc_match:
+                # Found calculations section
+                calc_start_pos = calc_match.start()
+                calc_header = calc_match.group(1)
+                
+                # Everything before calculations = recommendations
+                # Use rstrip() to only remove trailing whitespace, preserving leading/formatting
+                recommendations_text = advice_response[:calc_start_pos].rstrip()
+                
+                # Everything from calculations header onwards = calculations
+                # Use lstrip() only on the header itself to preserve rest of formatting
+                calculations_text = advice_response[calc_start_pos:].lstrip()
+                
+                self.logger.debug(f"Successfully parsed advice response: found calculations section at position {calc_start_pos}")
+                
+                return {
+                    "recommendations": recommendations_text,  # Preserves all markdown formatting
+                    "calculations": calculations_text  # Preserves all markdown formatting
+                }
+            else:
+                # No clear calculations section found
+                # Check if calculations might be embedded within recommendations
+                # (e.g., each risk level has its own calculations)
+                if any(keyword in advice_response.lower() for keyword in ['calculation', 'formula', '×', '=', '%']):
+                    # Likely has calculations but not in a separate section
+                    # Return full response as recommendations, but try to extract what we can
+                    self.logger.debug("No separate calculations section found, but calculations appear to be embedded")
+                    return {
+                        "recommendations": advice_response,  # Full response with embedded calculations
+                        "calculations": ""  # Empty since calculations are embedded in recommendations
+                    }
                 else:
-                    # Add to current section
-                    if current_content:
-                        current_content.append(section)
-                    else:
-                        # If no section identified yet, assume it's recommendations
-                        if current_section is None:
-                            current_section = 'recommendations'
-                        current_content = [section]
-            
-            # Save the last section
-            if current_section and current_content:
-                if current_section == 'recommendations':
-                    recommendations_parts.extend(current_content)
-                elif current_section == 'calculations':
-                    calculations_parts.extend(current_content)
-            
-            # Join the parts
-            recommendations = '\n\n'.join(recommendations_parts) if recommendations_parts else advice_response
-            calculations = '\n\n'.join(calculations_parts) if calculations_parts else "No separate calculations found"
-            
-            return {
-                "recommendations": recommendations,
-                "calculations": calculations
-            }
+                    # No calculations detected at all
+                    self.logger.debug("No calculations section found in advice response")
+                    return {
+                        "recommendations": advice_response,
+                        "calculations": ""
+                    }
             
         except Exception as e:
             self.logger.warning(f"Failed to parse advice response: {e}")
-            # Fallback: return the full response as recommendations
+            # On error, preserve the original markdown by returning full response
             return {
                 "recommendations": advice_response,
-                "calculations": "Parsing failed - calculations included in recommendations"
+                "calculations": ""
             }
 
 

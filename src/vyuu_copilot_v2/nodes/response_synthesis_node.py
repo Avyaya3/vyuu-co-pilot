@@ -37,7 +37,6 @@ RESPONSE GUIDELINES:
 - Present data in a structured, easy-to-read format
 - Include relevant context and insights
 - Keep responses concise but informative"""
-
 # Intent-specific guidelines
 INTENT_GUIDELINES = {
     IntentCategory.READ: "Focus on presenting data clearly and informatively. Highlight key information and make it easy to understand.",
@@ -310,22 +309,26 @@ Please confirm what was done and provide any relevant next steps."""
             # instead of generating a confirmation response
             aggregated_data = processed_data.get("aggregated_data", {})
             
-            # Look for advice data in the aggregated results
+            # Priority 1: Use full_response if available (preserves original markdown)
+            # The full_response contains the original LLM output with perfect markdown formatting
+            if "full_response" in aggregated_data:
+                full_response = aggregated_data["full_response"]
+                if full_response and isinstance(full_response, str):
+                    return full_response
+            
+            # Priority 2: Look for advice data in the aggregated results
+            # Note: aggregated_data stores values directly (strings), not nested dicts
             if "advice" in aggregated_data:
-                advice_data = aggregated_data["advice"]
-                if isinstance(advice_data, dict):
-                    # Check for new structure with separate advice and calculations
-                    if "advice" in advice_data and "calculations" in advice_data:
-                        # Combine recommendations and calculations for display
-                        recommendations = advice_data["advice"]
-                        calculations = advice_data["calculations"]
-                        return f"{recommendations}\n\n{calculations}"
-                    elif "advice" in advice_data:
-                        # Legacy structure - return the advice text with calculations
-                        return advice_data["advice"]
-                elif isinstance(advice_data, str):
-                    # Return the advice string directly
-                    return advice_data
+                advice_text = aggregated_data["advice"]
+                calculations_text = aggregated_data.get("calculations", "")
+                
+                # Combine recommendations and calculations if calculations exist
+                if calculations_text and calculations_text.strip():
+                    # Both exist, combine them with proper spacing
+                    return f"{advice_text}\n\n{calculations_text}"
+                elif isinstance(advice_text, str):
+                    # Only advice text available, return it directly
+                    return advice_text
             
             # Fallback: format the data nicely if no direct advice found
             formatted_data = self.formatter.format_data_for_llm(aggregated_data)
