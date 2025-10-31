@@ -157,30 +157,53 @@ class AdviceTool(ToolInterface):
         """Build an optimized system prompt for three-level risk advice."""
         return """You are a financial advisor. Provide THREE separate advice recommendations based on different risk levels.
 
+STRUCTURE REQUIREMENTS (CRITICAL):
+1. Provide ALL recommendations FIRST (for all three risk levels)
+2. Then provide ALL mathematical calculations in a SEPARATE section AFTER the recommendations
+3. Calculations must NEVER be inline with recommendations - they must be in a completely separate section
+
 For each risk level (HIGH RISK, MEDIUM RISK, LOW RISK):
-1. Provide 3-5 specific, actionable recommendations
-2. Include detailed mathematical calculations showing:
-   - Step-by-step breakdown of the calculation
-   - Key assumptions and formulas used
-   - Expected outcomes with numbers
-3. Use ₹ for amounts and show percentage calculations
+1. Provide 3-5 specific, actionable recommendations (bullet points only, NO calculations here)
+2. Use ₹ for amounts in recommendations
 
-CRITICAL: You MUST show the mathematical calculations that lead to the expected outcome. Do not just state the final number - show the working.
+After all three risk level recommendations, provide a SEPARATE "Mathematical Calculations:" section that includes:
+- Step-by-step breakdown of calculations for each risk level
+- Key assumptions and formulas used
+- Expected outcomes with numbers
+- Show the working (e.g., ₹50,000 × (1 + 0.12) = ₹50,000 × 1.12 = ₹56,000)
 
-Example format:
-Calculations:
-- Investment Amount: ₹50,000
-- Expected Return Rate: 12% per annum
-- Time Period: 1 year
-- Calculation: ₹50,000 × (1 + 0.12) = ₹50,000 × 1.12 = ₹56,000
-- Expected Outcome: ₹56,000
+CRITICAL FORMATTING RULES:
+- ALL recommendations must come BEFORE any calculations
+- Calculations section must start with a clear header: "Mathematical Calculations:" or "### Mathematical Calculations:"
+- Do NOT include calculations inline with recommendations
+- Do NOT put calculations under each individual risk level section
+- Put all calculations together in one separate section at the end
+
+Example CORRECT format:
+## HIGH RISK Strategy
+### Recommendations:
+- Recommendation 1
+- Recommendation 2
+
+## MEDIUM RISK Strategy
+### Recommendations:
+- Recommendation 1
+- Recommendation 2
+
+## LOW RISK Strategy
+### Recommendations:
+- Recommendation 1
+- Recommendation 2
+
+### Mathematical Calculations:
+- [All calculations for all risk levels here]
 
 Let the advice strategy vary based on the user's question and their risk tolerance. Consider:
 - High Risk: More aggressive growth strategies, higher equity allocation
 - Medium Risk: Balanced approach, mix of equity and debt
 - Low Risk: Conservative strategies, capital preservation focus
 
-Format each risk level clearly with calculations."""
+Format each risk level clearly with recommendations first, then all calculations separately."""
     
     def _build_user_prompt(self, params: AdviceParams) -> str:
         """Build the user prompt with query and context."""
@@ -284,30 +307,37 @@ Format each risk level clearly with calculations."""
         
         # Add request for three-level advice with calculations
         prompt_parts.append("""
-Provide THREE separate advice recommendations for the user's question, one for each risk level:
+Provide THREE separate advice recommendations for the user's question, one for each risk level.
 
-1. HIGH RISK Strategy
-   - Recommendations (3-5 bullet points)
-   - Mathematical Calculations:
-     * Show step-by-step calculation with formulas
-     * Include all working (e.g., ₹50,000 × 1.12 = ₹56,000)
-     * Show expected returns/outcomes with full calculation breakdown
-   
-2. MEDIUM RISK Strategy
-   - Recommendations (3-5 bullet points)
-   - Mathematical Calculations:
-     * Show step-by-step calculation with formulas
-     * Include all working
-     * Show expected returns/outcomes with full calculation breakdown
+CRITICAL FORMATTING REQUIREMENTS:
+1. Provide ALL recommendations FIRST (for all three risk levels) - NO calculations in this section
+2. Then provide ALL mathematical calculations in a SEPARATE section at the END
+3. Use this exact structure:
 
-3. LOW RISK Strategy
-   - Recommendations (3-5 bullet points)
-   - Mathematical Calculations:
-     * Show step-by-step calculation with formulas
-     * Include all working
-     * Show expected returns/outcomes with full calculation breakdown
+## HIGH RISK Strategy
+### Recommendations:
+- [3-5 bullet point recommendations - NO calculations here]
 
-IMPORTANT: For each expected outcome, you MUST show the complete mathematical working. Do not just state the final number - show how you arrived at it.
+## MEDIUM RISK Strategy
+### Recommendations:
+- [3-5 bullet point recommendations - NO calculations here]
+
+## LOW RISK Strategy
+### Recommendations:
+- [3-5 bullet point recommendations - NO calculations here]
+
+### Mathematical Calculations:
+[ALL calculations for ALL risk levels go here - separate section at the end]
+- Show step-by-step calculation with formulas for each risk level
+- Include all working (e.g., ₹50,000 × 1.12 = ₹56,000)
+- Show expected returns/outcomes with full calculation breakdown
+- Label calculations by risk level (HIGH RISK Calculations:, MEDIUM RISK Calculations:, LOW RISK Calculations:)
+
+IMPORTANT: 
+- Do NOT include calculations inline with recommendations
+- Do NOT put calculations under each individual risk level
+- Put ALL calculations together in the separate "Mathematical Calculations:" section at the end
+- For each expected outcome, you MUST show the complete mathematical working. Do not just state the final number - show how you arrived at it.
 
 Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calculations specific and personalized.""")
         
