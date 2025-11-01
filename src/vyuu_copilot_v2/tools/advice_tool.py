@@ -360,22 +360,57 @@ Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calc
         try:
             # Use regex to find calculation sections WITHOUT breaking markdown
             # Look for various patterns that indicate calculations section
+            # Patterns ordered from most specific to least specific
             calc_patterns = [
-                r'(?i)(\n\s*Mathematical\s+Calculations?:?\s*\n)',
-                r'(?i)(\n\s*Calculations?:?\s*\n)',
-                r'(?i)(\n\s*###?\s*Calculations?\s*\n)',
+                r'(?i)(###\s*Mathematical\s+Calculations?\s*:?\s*)',  # ### Mathematical Calculations: (most common)
+                r'(?i)(\n\s*###\s*Mathematical\s+Calculations?\s*:?\s*\n?)',  # With newline before
+                r'(?i)(###\s*Calculations?\s*:?\s*)',  # ### Calculations: (without Mathematical)
+                r'(?i)(\n\s*Mathematical\s+Calculations?\s*:?\s*\n?)',  # Mathematical Calculations: without ###
+                r'(?i)(\n\s*Calculations?\s*:?\s*\n?)',  # Just Calculations: with newlines
+                r'(?i)(Calculations?\s*:?\s*\n)',  # Calculations: at line start/end
             ]
             
             calc_match = None
             calc_pattern_used = None
+            all_matches = []
             
             # Try each pattern to find where calculations section starts
-            for pattern in calc_patterns:
-                match = re.search(pattern, advice_response)
-                if match:
-                    calc_match = match
-                    calc_pattern_used = pattern
-                    break
+            # Collect all matches from all patterns with priority scoring
+            # Patterns are ordered from most specific to least specific
+            for pattern_idx, pattern in enumerate(calc_patterns):
+                matches = list(re.finditer(pattern, advice_response))
+                for match in matches:
+                    # Higher priority for more specific patterns (lower index) and matches closer to end
+                    priority = (len(calc_patterns) - pattern_idx) * 1000 + match.start()
+                    all_matches.append((priority, match.start(), match, pattern))
+            
+            if all_matches:
+                # Sort by priority (descending), then by position (ascending)
+                # This prefers specific patterns like "Mathematical Calculations:" over generic "Calculations:"
+                all_matches.sort(key=lambda x: (-x[0], x[1]))
+                
+                # Get the highest priority match that's likely the section header
+                # Calculate threshold: calculations section should be in the last 40% of text
+                text_length = len(advice_response)
+                threshold_pos = int(text_length * 0.6)
+                
+                # Prefer matches in the last 40% of text, but if none found, use best match
+                best_match = None
+                best_priority = -1
+                for priority, match_pos, match, pattern in all_matches:
+                    # Prioritize matches that are in the latter part of the text
+                    # or are very specific (include "Mathematical")
+                    if "Mathematical" in pattern or match_pos >= threshold_pos:
+                        if priority > best_priority:
+                            best_priority = priority
+                            best_match = (match_pos, match, pattern)
+                
+                # If no match in threshold, use the highest priority match
+                if best_match is None:
+                    best_match = (all_matches[0][1], all_matches[0][2], all_matches[0][3])
+                
+                calc_match_pos, calc_match, calc_pattern_used = best_match
+                self.logger.debug(f"Found calculations section using pattern: {calc_pattern_used} at position {calc_match_pos}")
             
             if calc_match:
                 # Found calculations section
@@ -387,10 +422,17 @@ Use their financial data (disposable income: ₹X, net worth: ₹Y) to make calc
                 recommendations_text = advice_response[:calc_start_pos].rstrip()
                 
                 # Everything from calculations header onwards = calculations
-                # Use lstrip() only on the header itself to preserve rest of formatting
-                calculations_text = advice_response[calc_start_pos:].lstrip()
+                # Preserve the header and all content after it
+                calculations_text = advice_response[calc_start_pos:]
                 
-                self.logger.debug(f"Successfully parsed advice response: found calculations section at position {calc_start_pos}")
+                # Only trim leading whitespace/newlines that are part of spacing before the header
+                # Don't remove the header itself or content after it
+                calculations_text = calculations_text.lstrip()
+                
+                self.logger.debug(
+                    f"Successfully parsed advice response: found calculations section at position {calc_start_pos}. "
+                    f"Recommendations length: {len(recommendations_text)}, Calculations length: {len(calculations_text)}"
+                )
                 
                 return {
                     "recommendations": recommendations_text,  # Preserves all markdown formatting
